@@ -1,0 +1,16 @@
+{
+  "name": "simnukifob",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./app.js"
+  },
+  "dependencies": {
+    "crc": "^3.4.0",
+    "debug": "~2.2.0",
+    "nconf": "^0.8.4",
+    "noble": "^1.6.0",
+    "sodium": "^1.1.12",
+    "underscore": "^1.8.3"
+  }
+}
