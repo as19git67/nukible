@@ -652,10 +652,10 @@ _.extend(nukible.prototype, {
                                 var errorCommandId = data.readUInt16LE(3);
                                 switch (errorCode) {
                                     case nukible.prototype.P_ERROR_NOT_PAIRING:
-                                        console.log("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                                        callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
                                         break;
                                     default:
-                                        console.log("ERROR from SL: " + errorCode.toString(16));
+                                        callback("ERROR from SL: " + errorCode.toString(16));
                                 }
                             } else {
                                 callback("ERROR: not expected command id " + rCmd);
@@ -903,6 +903,11 @@ _.extend(nukible.prototype, {
 
         STATUS_COMPLETE: 0x00,
         STATUS_ACCEPTED: 0x01,
+
+        P_ERROR_NOT_PAIRING: 0x10,
+        P_ERROR_BAD_AUTHENTICATOR: 0x11,
+        P_ERROR_BAD_PARAMETER: 0x12,
+        P_ERROR_MAX_USER: 0x13,
 
         K_ERROR_BAD_PIN: 0x21,
         K_ERROR_BAD_NONCE: 0x22,
