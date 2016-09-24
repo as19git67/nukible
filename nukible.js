@@ -57,6 +57,7 @@ _.extend(nukible.prototype, {
                         noble.removeAllListeners('stateChange');
                         if (err) {
                             self.isPaired = false;
+                            self.isInPairing = false;
                             clearTimeout(t);
                             if (_.isFunction(callback)) {
                                 callback(err);
