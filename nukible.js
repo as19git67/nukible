@@ -45,7 +45,7 @@ _.extend(nukible.prototype, {
                     self.isInPairing = false;
                     callback("pairing timeout");
                 }
-            }, 30000);
+            }, 60000);
             if (noble.state == 'poweredOn') {
                 noble.startScanning();
             }
@@ -137,7 +137,7 @@ _.extend(nukible.prototype, {
                 if (_.isFunction(callback)) {
                     callback("unlock timeout");
                 }
-            }, 10000);
+            }, 30000);
             if (noble.state == 'poweredOn') {
                 console.log("start scanning");
                 noble.startScanning();
