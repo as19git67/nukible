@@ -646,7 +646,7 @@ _.extend(nukible.prototype, {
             // console.log('response from nuki', data, isNotification);
             switch (this.state) {
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY:
-                    if (this._crcOk(data)) {
+                    // if (this._crcOk(data)) {
                         rCmd = data.readUInt16LE(0);
                         if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
                             console.log("Step 4: SL sent first part of public key...");
@@ -667,9 +667,9 @@ _.extend(nukible.prototype, {
                                 callback("ERROR: not expected command id " + rCmd);
                             }
                         }
-                    } else {
-                        callback("ERROR: wrong CRC");
-                    }
+                    // } else {
+                    //     callback("ERROR: wrong CRC");
+                    // }
                     break;
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN:
                     this.rData = Buffer.concat([this.rData, data]);
