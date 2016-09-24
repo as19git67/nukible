@@ -50,21 +50,23 @@ function handleKeyboard() {
     var nukiLockUuids = _.keys(nukiLocks);
     if (nukiLockUuids.length === 0) {
         console.log("No locks paired");
-        exit();
+        this.exit();
     }
-    var firstLock = nukiLocks[_.first(nukiLockUuids)];
+    var peripheralId = _.first(nukiLockUuids);
+    var firstLock = nukiLocks[peripheralId];
 
 // make `process.stdin` begin emitting "keypress" events
     keypress(process.stdin);
 
 // listen for the "keypress" event
     var allowCommands = true;
+    var self = this;
     process.stdin.on('keypress', function (ch, key) {
         console.log('got "keypress"', key);
         if (key) {
             if (key.ctrl && key.name == 'c') {
                 process.stdin.pause();
-                exit();
+                self.exit();
             } else {
                 if (allowCommands) {
                     switch (key.name) {
@@ -83,7 +85,8 @@ function handleKeyboard() {
                                     appId: appId,
                                     appType: appType,
                                     name: name,
-                                    nukiLock: firstLock
+                                    nukiLock: firstLock,
+                                    peripheralId: peripheralId
                                 };
                                 nuki.lock(options, function (err) {
                                     if (err) {
@@ -102,7 +105,8 @@ function handleKeyboard() {
                                     appId: appId,
                                     appType: appType,
                                     name: name,
-                                    nukiLock: firstLock
+                                    nukiLock: firstLock,
+                                    peripheralId: peripheralId
                                 };
                                 nuki.unlock(options, function (err) {
                                     if (err) {
@@ -115,7 +119,7 @@ function handleKeyboard() {
                             }
                             break;
                         case 'q':
-                            exit();
+                            self.exit();
                             break;
                     }
                 } else {

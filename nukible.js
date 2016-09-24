@@ -146,8 +146,8 @@ _.extend(nukible.prototype, {
             noble.on('discover',
                 function (peripheral) {
                     var peripheralId = peripheral.uuid;
-                    var lockId = self.options.nukiLock.nukiUuid;
-                    if (lockId === peripheralId) {
+                    var lockPeripheralId = self.options.peripheralId;
+                    if (lockPeripheralId === peripheralId) {
 
                         noble.stopScanning();
                         noble.removeAllListeners('discover');
@@ -427,7 +427,7 @@ _.extend(nukible.prototype, {
                             switch (self._currentCommand) {
                                 case 'unlock':
                                     var peripheralId = peripheral.uuid;
-                                    var lock = self.options.nukiLocks[peripheralId];
+                                    var lock = self.options.nukiLock;
                                     if (lock) {
                                         var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
                                         self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
