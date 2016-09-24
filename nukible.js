@@ -646,7 +646,11 @@ _.extend(nukible.prototype, {
                         this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
                         this.rData = data;
                     } else {
-                        callback("ERROR: not expected command id " + rCmd);
+                        if (rCmd === nukible.prototype.CMD_ERROR) {
+                            console.log("SL sent error ", data);
+                        } else {
+                            callback("ERROR: not expected command id " + rCmd);
+                        }
                     }
                     break;
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN:
