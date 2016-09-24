@@ -585,6 +585,10 @@ _.extend(nukible.prototype, {
                                         }
                                         console.log("State of lock (" + lock.nukiUuid + ") is " + lockStateStr);
                                         break;
+                                    case nukible.prototype.CMD_STATUS:
+                                        var status = payload.readUInt8(0);
+                                        console.log("SL sent status " + status.toString(16));
+                                        break;
                                     default:
                                         console.log("UNKNOWN message:", decryptedMessge);
                                         callback("ERROR: message received but not expected");
@@ -647,26 +651,26 @@ _.extend(nukible.prototype, {
             switch (this.state) {
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY:
                     // if (this._crcOk(data)) {
-                        rCmd = data.readUInt16LE(0);
-                        if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
-                            console.log("Step 4: SL sent first part of public key...");
-                            this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
-                            this.rData = data;
-                        } else {
-                            if (rCmd === nukible.prototype.CMD_ERROR) {
-                                var errorCode = data.readUInt8(2);
-                                var errorCommandId = data.readUInt16LE(3);
-                                switch (errorCode) {
-                                    case nukible.prototype.P_ERROR_NOT_PAIRING:
-                                        callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
-                                        break;
-                                    default:
-                                        callback("ERROR from SL: " + errorCode.toString(16));
-                                }
-                            } else {
-                                callback("ERROR: not expected command id " + rCmd);
+                    rCmd = data.readUInt16LE(0);
+                    if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
+                        console.log("Step 4: SL sent first part of public key...");
+                        this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
+                        this.rData = data;
+                    } else {
+                        if (rCmd === nukible.prototype.CMD_ERROR) {
+                            var errorCode = data.readUInt8(2);
+                            var errorCommandId = data.readUInt16LE(3);
+                            switch (errorCode) {
+                                case nukible.prototype.P_ERROR_NOT_PAIRING:
+                                    callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                                    break;
+                                default:
+                                    callback("ERROR from SL: " + errorCode.toString(16));
                             }
+                        } else {
+                            callback("ERROR: not expected command id " + rCmd);
                         }
+                    }
                     // } else {
                     //     callback("ERROR: wrong CRC");
                     // }
