@@ -655,7 +655,7 @@ _.extend(nukible.prototype, {
                                         console.log("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
                                         break;
                                     default:
-                                        console.log("ERROR from SL: " + errorCode.toString('hex'));
+                                        console.log("ERROR from SL: " + errorCode.toString(16));
                                 }
                             } else {
                                 callback("ERROR: not expected command id " + rCmd);
