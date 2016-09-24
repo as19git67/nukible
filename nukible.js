@@ -542,7 +542,7 @@ _.extend(nukible.prototype, {
                 // var messageLen = this.receivedData.readUInt16LE(28);
                 var encryptedMessage = this.receivedData.slice(30);
                 var peripheralId = peripheral.uuid;
-                var lock = this.options.nukiLocks[peripheralId];
+                var lock = this.options.nukiLock;
                 if (lock) {
                     if (lock.sharedSecret) {
                         var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
