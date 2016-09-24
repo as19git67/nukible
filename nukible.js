@@ -50,37 +50,37 @@ _.extend(nukible.prototype, {
             noble.on('stateChange', this._pairingOnStateChanged);
             noble.on('discover', function (peripheral) {
                 self._pairingOnPeripheralDiscovered.call(self, peripheral, function (err, result) {
-                    noble.stopScanning();
-                    noble.removeAllListeners('discover');
-                    noble.removeAllListeners('stateChange');
-                    if (err) {
+                        noble.stopScanning();
+                        noble.removeAllListeners('discover');
+                        noble.removeAllListeners('stateChange');
+                        if (err) {
                             if (_.isFunction(callback)) {
                                 callback(err);
                             }
                         } else {
-                        if (result && result.status) {
-                            switch (result.status) {
-                                case 'paired':
-                                    self.isPaired = true;
-                                    clearTimeout(t);
+                            if (result && result.status) {
+                                switch (result.status) {
+                                    case 'paired':
+                                        self.isPaired = true;
+                                        clearTimeout(t);
                                         if (_.isFunction(callback)) {
                                             callback(null, result.results);
                                         }
-                                    break;
-                                case 'disconnected':
-                                    if (self.isPaired) {
-                                        console.log("Peripheral disconnected.");
-                                    } else {
-                                        if (_.isFunction(callback)) {
-                                            callback("ERROR: peripheral disconnected during pairing.");
+                                        break;
+                                    case 'disconnected':
+                                        if (self.isPaired) {
+                                            console.log("Peripheral disconnected.");
+                                        } else {
+                                            if (_.isFunction(callback)) {
+                                                callback("ERROR: peripheral disconnected during pairing.");
+                                            }
                                         }
-                                        }
-                                    break;
-                                default:
+                                        break;
+                                    default:
                                         if (_.isFunction(callback)) {
                                             callback("ERROR: pairing failed for unknown reason");
                                         }
-                            }
+                                }
                             }
                         }
                     }
@@ -640,17 +640,29 @@ _.extend(nukible.prototype, {
             // console.log('response from nuki', data, isNotification);
             switch (this.state) {
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY:
-                    rCmd = data.readUInt16LE(0);
-                    if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
-                        console.log("Step 4: SL sent first part of public key...");
-                        this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
-                        this.rData = data;
-                    } else {
-                        if (rCmd === nukible.prototype.CMD_ERROR) {
-                            console.log("SL sent error ", data);
+                    if (this._crcOk(data)) {
+                        rCmd = data.readUInt16LE(0);
+                        if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
+                            console.log("Step 4: SL sent first part of public key...");
+                            this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
+                            this.rData = data;
                         } else {
-                            callback("ERROR: not expected command id " + rCmd);
+                            if (rCmd === nukible.prototype.CMD_ERROR) {
+                                var errorCode = data.readUInt8(2);
+                                var errorCommandId = data.readUInt16LE(3);
+                                switch (errorCode) {
+                                    case nukible.prototype.P_ERROR_NOT_PAIRING:
+                                        console.log("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                                        break;
+                                    default:
+                                        console.log("ERROR from SL: " + errorCode.toString('hex'));
+                                }
+                            } else {
+                                callback("ERROR: not expected command id " + rCmd);
+                            }
                         }
+                    } else {
+                        callback("ERROR: wrong CRC");
                     }
                     break;
                 case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN:
