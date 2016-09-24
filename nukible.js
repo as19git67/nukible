@@ -73,7 +73,7 @@ _.extend(nukible.prototype, {
                                         }
                                         break;
                                     case 'disconnected':
-                                        if (self.isPaired && !self.isInPairing) {
+                                        if (self.isPaired || !self.isInPairing) {
                                             console.log("Peripheral disconnected.");
                                         } else {
                                             if (_.isFunction(callback)) {
