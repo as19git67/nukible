@@ -145,27 +145,34 @@ _.extend(nukible.prototype, {
             noble.on('stateChange', this._onStateChanged);
             noble.on('discover',
                 function (peripheral) {
-                    noble.stopScanning();
-                    noble.removeAllListeners('discover');
-                    noble.removeAllListeners('stateChange');
-                    self._onPeripheralDiscovered.call(self, "unlock", peripheral, function (err, result) {
-                        clearTimeout(t);
-                        if (err) {
-                            if (_.isFunction(callback)) {
-                                callback(err);
-                            }
-                        } else {
-                            if (result && result.status === 'complete') {
+                    var peripheralId = peripheral.uuid;
+                    var lockId = self.options.nukiLock.nukiUuid;
+                    if (lockId === peripheralId) {
+
+                        noble.stopScanning();
+                        noble.removeAllListeners('discover');
+                        noble.removeAllListeners('stateChange');
+                        self._onPeripheralDiscovered.call(self, "unlock", peripheral, function (err, result) {
+                            clearTimeout(t);
+                            if (err) {
                                 if (_.isFunction(callback)) {
-                                    callback(null);
+                                    callback(err);
                                 }
                             } else {
-                                if (_.isFunction(callback)) {
-                                    callback("ERROR: unknown");
+                                if (result && result.status === 'complete') {
+                                    if (_.isFunction(callback)) {
+                                        callback(null);
+                                    }
+                                } else {
+                                    if (_.isFunction(callback)) {
+                                        callback("ERROR: unknown");
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        console.log("ignoring peripheral with id " + peripheralId);
+                    }
                 });
         },
 

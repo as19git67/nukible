@@ -4,6 +4,8 @@ var path = require('path');
 var nconf = require('nconf');
 var nukible = require('./nukible');
 var sodium = require('sodium');
+var keypress = require('keypress');
+
 
 var config = new nconf.Provider({
     env: true,
@@ -14,18 +16,14 @@ var config = new nconf.Provider({
     }
 });
 
+var nuki = new nukible();
 var appId = config.get('appId');
 var appType = config.get('appType');
 var name = config.get('name');
 var nukiLocks = config.get('nukiLocks');
 
 if (isPaired()) {
-    processCommands({
-        appId: appId,
-        appType: appType,
-        name: name,
-        nukiLocks: nukiLocks
-    });
+    handleKeyboard();
 } else {
     var self = this;
     var appIdBuffer = new Buffer(4);
@@ -41,9 +39,94 @@ if (isPaired()) {
             console.log("Writing configuration failed", err);
         } else {
             reReadConfig.call(self);
-            pairOrProcessCommands.call(self);
+            console.log("initial configuration saved");
+            handleKeyboard();
         }
     });
+}
+
+function handleKeyboard() {
+
+    var nukiLockUuids = _.keys(nukiLocks);
+    if (nukiLockUuids.length === 0) {
+        console.log("No locks paired");
+        exit();
+    }
+    var firstLock = nukiLocks[_.first(nukiLockUuids)];
+
+// make `process.stdin` begin emitting "keypress" events
+    keypress(process.stdin);
+
+// listen for the "keypress" event
+    var allowCommands = true;
+    process.stdin.on('keypress', function (ch, key) {
+        console.log('got "keypress"', key);
+        if (key) {
+            if (key.ctrl && key.name == 'c') {
+                process.stdin.pause();
+                exit();
+            } else {
+                if (allowCommands) {
+                    switch (key.name) {
+                        case 'p':
+                            if (!isPaired()) {
+                                allowCommands = false;
+                                startPairing(function (err, pairedLockData) {
+                                    allowCommands = true;
+                                });
+                            }
+                            break;
+                        case 'l':
+                            if (isPaired()) {
+                                allowCommands = false;
+                                options = {
+                                    appId: appId,
+                                    appType: appType,
+                                    name: name,
+                                    nukiLock: firstLock
+                                };
+                                nuki.lock(options, function (err) {
+                                    if (err) {
+                                        console.log("ERROR: locking the door failed", err);
+                                    } else {
+                                        console.log("DOOR LOCKED.");
+                                    }
+                                    allowCommands = true;
+                                });
+                            }
+                            break;
+                        case 'u':
+                            if (isPaired()) {
+                                allowCommands = false;
+                                options = {
+                                    appId: appId,
+                                    appType: appType,
+                                    name: name,
+                                    nukiLock: firstLock
+                                };
+                                nuki.unlock(options, function (err) {
+                                    if (err) {
+                                        console.log("ERROR: unlocking the door failed", err);
+                                    } else {
+                                        console.log("DOOR UNLOCKED.");
+                                    }
+                                    allowCommands = true;
+                                });
+                            }
+                            break;
+                        case 'q':
+                            exit();
+                            break;
+                    }
+                } else {
+                    console.log("previous command not finished");
+                }
+            }
+        }
+    });
+
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
 }
 
 function reReadConfig() {
@@ -61,63 +144,31 @@ function isPaired() {
     }
 }
 
-function pairOrProcessCommands() {
-    if (isPaired()) {
-        processCommands({
-            appId: appId,
-            appType: appType,
-            name: name,
-            nukiLocks: nukiLocks
-        });
-    } else {
-        var self = this;
-        startPairing(
-            {appId: appId, appType: appType, name: name, nukiLocks: nukiLocks},
-            function (err, pairingData) {
+function startPairing(callback) {
+    var options = {
+        appId: appId, appType: appType, name: name, nukiLocks: nukiLocks
+    };
+
+    nuki.pair(options, function (err, pairingData) {
+        if (err) {
+            console.log("Pairing failed:", err);
+            callback(err);
+        } else {
+            console.log("Paired successfully.");
+            nukiLocks[pairingData.peripheralId] = {
+                nukiUuid: pairingData.nukiUuid,
+                nukiAuthorizationId: pairingData.nukiAuthorizationId,
+                sharedSecret: pairingData.sharedSecret
+            };
+            config.set("nukiLocks", nukiLocks);
+            config.save(function (err) {
                 if (err) {
-                    console.log("Pairing failed:", err);
+                    console.log("Writing configuration failed", err);
+                    callback(err);
                 } else {
-                    console.log("Paired successfully.");
-                    nukiLocks[pairingData.peripheralId] = {
-                        nukiUuid: pairingData.nukiUuid,
-                        nukiAuthorizationId: pairingData.nukiAuthorizationId,
-                        sharedSecret: pairingData.sharedSecret
-                    };
-                    config.set("nukiLocks", nukiLocks);
-                    config.save(function (err) {
-                        if (err) {
-                            console.log("Writing configuration failed", err);
-                        } else {
-                            // let thread finish before starting new command
-                            setTimeout(function () {
-                                reReadConfig.call(self);
-                                processCommands.call(self, {
-                                    appId: appId,
-                                    appType: appType,
-                                    name: name,
-                                    nukiLocks: nukiLocks
-                                });
-                            }, 1000);
-                        }
-                    });
+                    callback(null, nukiLocks[pairingData.peripheralId]);
                 }
             });
-    }
-}
-
-function startPairing(options, callback) {
-    var nuki = new nukible();
-    nuki.pair(options, callback);
-}
-
-function processCommands(options) {
-    var nuki = new nukible();
-    // todo
-    nuki.unlock(options, function (err) {
-        if (err) {
-            console.log("unlocking failed", err);
-        } else {
-            console.log("Ready.");
         }
     });
 }
