@@ -34,6 +34,7 @@ _.extend(nukible.prototype, {
                 _.defaults(this.options, options);
             }
             this.isPaired = false;
+            this.isInPairing = true;
             var self = this;
             var t = setTimeout(function () {
                 console.log("Timeout. Aborting pairing.");
@@ -41,6 +42,7 @@ _.extend(nukible.prototype, {
                 noble.removeAllListeners('discover');
                 noble.removeAllListeners('stateChange');
                 if (_.isFunction(callback)) {
+                    self.isInPairing = false;
                     callback("pairing timeout");
                 }
             }, 30000);
@@ -70,7 +72,7 @@ _.extend(nukible.prototype, {
                                         }
                                         break;
                                     case 'disconnected':
-                                        if (self.isPaired) {
+                                        if (self.isPaired && !self.isInPairing) {
                                             console.log("Peripheral disconnected.");
                                         } else {
                                             if (_.isFunction(callback)) {
@@ -84,6 +86,7 @@ _.extend(nukible.prototype, {
                                         }
                                 }
                             }
+                            self.isInPairing = false;
                         }
                     }
                 );
