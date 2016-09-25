@@ -50,7 +50,7 @@ function handleKeyboard() {
     var nukiLockUuids = _.keys(nukiLocks);
     if (nukiLockUuids.length === 0) {
         console.log("No locks paired");
-        this.exit();
+        process.exit();
     }
     var peripheralId = _.first(nukiLockUuids);
     var firstLock = nukiLocks[peripheralId];
@@ -66,7 +66,7 @@ function handleKeyboard() {
         if (key) {
             if (key.ctrl && key.name == 'c') {
                 process.stdin.pause();
-                self.exit();
+                process.exit();
             } else {
                 if (allowCommands) {
                     switch (key.name) {
@@ -119,7 +119,7 @@ function handleKeyboard() {
                             }
                             break;
                         case 'q':
-                            self.exit();
+                            process.exit();
                             break;
                     }
                 } else {
