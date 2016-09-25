@@ -690,7 +690,11 @@ _.extend(nukible.prototype, {
                                         if (status === nukible.prototype.STATUS_COMPLETE) {
                                             callback();
                                         } else {
-                                            callback("ERROR: SL sent STATUS not complete");
+                                            if (status === nukible.prototype.STATUS_ACCEPTED) {
+                                                console.log("SL sent status accepted");
+                                            } else {
+                                                callback("ERROR: SL sent STATUS not complete");
+                                            }
                                         }
                                         break;
                                     default:
