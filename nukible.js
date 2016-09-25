@@ -124,6 +124,59 @@ _.extend(nukible.prototype, {
 
         },
 
+        lock: function (options, callback) {
+            if (options) {
+                _.defaults(this.options, options);
+            }
+            var self = this;
+            var t = setTimeout(function () {
+                console.log("Timeout. Aborting lock.");
+                noble.stopScanning();
+                noble.removeAllListeners('discover');
+                noble.removeAllListeners('stateChange');
+                if (_.isFunction(callback)) {
+                    callback("lock timeout");
+                }
+            }, 30000);
+            if (noble.state == 'poweredOn') {
+                console.log("start scanning");
+                noble.startScanning();
+            }
+            noble.on('stateChange', this._onStateChanged);
+            noble.on('discover',
+                function (peripheral) {
+                    var peripheralId = peripheral.uuid;
+                    var lockPeripheralId = self.options.peripheralId;
+                    if (lockPeripheralId === peripheralId) {
+
+                        noble.stopScanning();
+                        noble.removeAllListeners('discover');
+                        noble.removeAllListeners('stateChange');
+                        self._onPeripheralDiscovered.call(self, "lock", peripheral, function (err, result) {
+                            clearTimeout(t);
+                            if (err) {
+                                if (_.isFunction(callback)) {
+                                    callback(err);
+                                }
+                            } else {
+                                if (result && result.status === 'complete') {
+                                    if (_.isFunction(callback)) {
+                                        callback(null);
+                                    }
+                                } else {
+                                    if (_.isFunction(callback)) {
+                                        callback("ERROR: unknown");
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        console.log("ignoring peripheral with id " + peripheralId);
+                    }
+                });
+        },
+
+
         unlock: function (options, callback) {
             if (options) {
                 _.defaults(this.options, options);
@@ -425,6 +478,45 @@ _.extend(nukible.prototype, {
                             });
 
                             switch (self._currentCommand) {
+                                case 'lock':
+                                    var peripheralId = peripheral.uuid;
+                                    var lock = self.options.nukiLock;
+                                    if (lock) {
+                                        var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
+                                        self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
+                                                if (err) {
+                                                    peripheral.disconnect();
+                                                    callback(err);
+                                                } else {
+
+                                                    // console.log("Nonce received from SL:", nonceK);
+                                                    var data1 = new Buffer(6);
+                                                    data1.writeUInt8(2, 0); // 0x02 is lock
+                                                    data1.writeUInt32LE(self.options.appId, 1);
+                                                    data1.writeUInt8(0, 5); // no flags set
+                                                    var wData = Buffer.concat([data1, nonceK]);
+                                                    var wDataEncrypted = self.prepareEncryptedDataToSend(
+                                                        nukible.prototype.CMD_LOCK_ACTION,
+                                                        lock.nukiAuthorizationId,
+                                                        sharedSecret,
+                                                        wData);
+
+                                                    self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+                                                        if (err) {
+                                                            console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
+                                                            peripheral.disconnect();
+                                                            callback(err);
+                                                        }
+                                                    });
+
+//                                                callback(null, {status: 'unlocked'});
+                                                }
+                                            }
+                                        );
+                                    } else {
+                                        callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
+                                    }
+                                    break;
                                 case 'unlock':
                                     var peripheralId = peripheral.uuid;
                                     var lock = self.options.nukiLock;
@@ -438,7 +530,7 @@ _.extend(nukible.prototype, {
 
                                                     // console.log("Nonce received from SL:", nonceK);
                                                     var data1 = new Buffer(6);
-                                                    data1.writeUInt8(1, 0); // unlock
+                                                    data1.writeUInt8(1, 0); // 0x01 is unlock
                                                     data1.writeUInt32LE(self.options.appId, 1);
                                                     data1.writeUInt8(0, 5); // no flags set
                                                     var wData = Buffer.concat([data1, nonceK]);
@@ -595,6 +687,11 @@ _.extend(nukible.prototype, {
                                     case nukible.prototype.CMD_STATUS:
                                         var status = payload.readUInt8(0);
                                         console.log("SL sent status " + status.toString(16));
+                                        if (status === nukible.prototype.STATUS_COMPLETE) {
+                                            callback();
+                                        } else {
+                                            callback("ERROR: SL sent STATUS not complete");
+                                        }
                                         break;
                                     default:
                                         console.log("UNKNOWN message:", decryptedMessge);
