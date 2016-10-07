@@ -1,8 +1,5 @@
-# simnukifob
-Simulates a Nuki.io Fob (runs on Raspberry PI on node.js - needs bluetooth dongle)
-It pairs with a nuki smartlock and performs a unlock command.
-
-Note that this code is preliminary and my cause unexpected results.
+# Nukible
+Nukible is a client library created for the Nuki SmartLock Bluetooth API and is written to be run with node.js.
 
 # Installation
 I'm running the nuki fob simulator on a Raspberry PI 2 and on a Raspberry PI 3 with node.js version 4.4.4 and on the PI 2 there is a bluetooth dongle connected via USB.
@@ -51,3 +48,9 @@ To run the simulator call node with main.js. If running the first time it pairs 
 ```sh
 node main.js
 ```
+# Samples/main.js
+Simulates a Nuki.io Fob (runs on Raspberry PI on node.js - needs bluetooth dongle)
+It pairs with a nuki smartlock and performs a unlock command.
+
+Note that this code is preliminary and my cause unexpected results.
+

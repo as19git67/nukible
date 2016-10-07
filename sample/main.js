@@ -2,7 +2,7 @@ var _ = require('underscore');
 var fs = require('fs');
 var path = require('path');
 var nconf = require('nconf');
-var nukible = require('./nukible');
+var nukible = require('./../nukible');
 var sodium = require('sodium');
 var keypress = require('keypress');
 
