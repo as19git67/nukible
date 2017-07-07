@@ -47,13 +47,14 @@ if (isPaired()) {
 
 function handleKeyboard() {
 
+    var peripheralId;
+    var firstLock;
+
     var nukiLockUuids = _.keys(nukiLocks);
-    if (nukiLockUuids.length === 0) {
-        console.log("No locks paired");
-        process.exit();
+    if (nukiLockUuids.length > 0) {
+        peripheralId = _.first(nukiLockUuids);
+        firstLock = nukiLocks[peripheralId];
     }
-    var peripheralId = _.first(nukiLockUuids);
-    var firstLock = nukiLocks[peripheralId];
 
 // make `process.stdin` begin emitting "keypress" events
     keypress(process.stdin);
