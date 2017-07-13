@@ -264,7 +264,7 @@ _.extend(nukible.prototype, {
             ///
             peripheral.connect(function (err) {
                 if (err) {
-                    concole.log("ERROR while connecting " + peripheral.advertisement.localName);
+                    console.log("ERROR while connecting " + peripheral.advertisement.localName);
                     callback(err);
                 } else {
                     //
