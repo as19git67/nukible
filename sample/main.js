@@ -60,12 +60,18 @@ function handleKeyboard() {
 
   // listen for the "keypress" event
   var allowCommands = true;
-  console.log("c: exit");
-  console.log("p: pair");
-  if (isPaired()) {
-    console.log("l: lock");
-    console.log("u: unlock");
+
+  function showUsage() {
+    console.log("c: exit");
+    if (isPaired()) {
+      console.log("l: lock");
+      console.log("u: unlock");
+    } else {
+      console.log("p: pair");
+    }
   }
+
+  showUsage();
   process.stdin.on('keypress', function (ch, key) {
     //console.log('got "keypress"', key);
     if (key) {
@@ -77,6 +83,7 @@ function handleKeyboard() {
           switch (key.name) {
           case 'p':
             if (!isPaired()) {
+              console.log("Start pairing with NUKI lock. Make sure NUKI is in pairing mode.");
               allowCommands = false;
               startPairing(function (err, pairedLockData) {
                 allowCommands = true;
@@ -131,6 +138,8 @@ function handleKeyboard() {
           console.log("previous command not finished");
         }
       }
+
+      showUsage();
     }
   });
 
