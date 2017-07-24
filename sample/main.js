@@ -60,17 +60,16 @@ function handleKeyboard() {
 
   // listen for the "keypress" event
   var allowCommands = true;
-  var self = this;
+  console.log("c: exit");
+  console.log("p: pair");
+  if (isPaired()) {
+    console.log("l: lock");
+    console.log("u: unlock");
+  }
   process.stdin.on('keypress', function (ch, key) {
     //console.log('got "keypress"', key);
-      console.log("c: exit");
-      console.log("p: pair");
-      if (isPaired()) {
-        console.log("l: lock");
-        console.log("u: unlock");
-      }
     if (key) {
-      if (key.ctrl && key.name == 'c') {
+      if (key.ctrl && key.name === 'c') {
         process.stdin.pause();
         process.exit();
       } else {
