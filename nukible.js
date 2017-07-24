@@ -37,7 +37,7 @@ _.extend(nukible.prototype, {
             this.isInPairing = true;
             var self = this;
             var t = setTimeout(function () {
-                console.log("Timeout. Aborting pairing.");
+              console.log("Timeout. Aborting pairing.");
                 noble.stopScanning();
                 noble.removeAllListeners('discover');
                 noble.removeAllListeners('stateChange');
@@ -264,7 +264,7 @@ _.extend(nukible.prototype, {
             ///
             peripheral.connect(function (err) {
                 if (err) {
-                    concole.log("ERROR while connecting " + peripheral.advertisement.localName);
+                    console.log("ERROR while connecting " + peripheral.advertisement.localName);
                     callback(err);
                 } else {
                     //

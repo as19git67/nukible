@@ -17,7 +17,7 @@ sudo cp -R * /usr/local/
 ## Bluetooth connection to the Nuki SmartLock
 
 ```sh
-sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
+sudo apt-get install autoconf libtool bluetooth bluez libbluetooth-dev libudev-dev
 ```
 
 ### Running without root/sudo
