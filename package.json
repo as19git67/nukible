@@ -1,9 +1,11 @@
 {
+  "license": "MIT",
+  "main": "./nukible.js",
   "name": "nukible",
   "version": "1.0.1",
   "private": false,
   "scripts": {
-    "start": "node ./app.js"
+    "start": "node ./sample/main.js"
   },
   "dependencies": {
     "crc": "^3.4.0",

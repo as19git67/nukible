@@ -62,7 +62,7 @@ function handleKeyboard() {
   var allowCommands = true;
 
   function showUsage() {
-    console.log("c: exit");
+    console.log("q: exit");
     if (isPaired()) {
       console.log("l: lock");
       console.log("u: unlock");
