@@ -87,6 +87,7 @@ function handleKeyboard() {
               allowCommands = false;
               startPairing(function (err, pairedLockData) {
                 allowCommands = true;
+                showUsage();
               });
             }
             break;
@@ -107,6 +108,7 @@ function handleKeyboard() {
                   console.log("DOOR LOCKED.");
                 }
                 allowCommands = true;
+                showUsage();
               });
             }
             break;
@@ -127,6 +129,7 @@ function handleKeyboard() {
                   console.log("DOOR UNLOCKED.");
                 }
                 allowCommands = true;
+                showUsage();
               });
             }
             break;
@@ -139,7 +142,6 @@ function handleKeyboard() {
         }
       }
 
-      showUsage();
     }
   });
 
