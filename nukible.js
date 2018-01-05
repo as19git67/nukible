@@ -50,7 +50,7 @@ _.extend(nukible.prototype, {
         }
         noble.on('stateChange', this._pairingOnStateChanged);
         noble.on('discover', function (peripheral) {
-          if (peripheral.localName) {
+          if (peripheral.advertisement.localName) {
             self._pairingOnPeripheralDiscovered.call(self, peripheral, function (err, result) {
                   noble.stopScanning();
                   noble.removeAllListeners('discover');
