@@ -31,7 +31,7 @@ if (_.isNumber(appId) && _.isNumber(appType) && _.isString(name)) {
   appId = appIdBuffer.readUInt32LE();
   config.set("appId", appId);
   config.set("appType", 2);   // Nuki Fob
-  config.set("name", "HB NFC Key " + appId);
+  config.set("name", "HB Sample Key " + appId);
   config.set("nukiLocks", {});
   config.save(function (err) {
     if (err) {
@@ -66,6 +66,7 @@ function handleKeyboard() {
     if (isPaired()) {
       console.log("l: lock");
       console.log("u: unlock");
+      console.log("s: scan");
     } else {
       console.log("p: pair");
     }
@@ -86,6 +87,27 @@ function handleKeyboard() {
               console.log("Start pairing with NUKI lock. Make sure NUKI is in pairing mode.");
               allowCommands = false;
               startPairing(function (err, pairedLockData) {
+                allowCommands = true;
+                showUsage();
+              });
+            }
+            break;
+          case 's':
+            if (isPaired()) {
+              allowCommands = false;
+              options = {
+                appId: appId,
+                appType: appType,
+                name: name,
+                nukiLock: firstLock,
+                peripheralId: peripheralId
+              };
+              nuki.getLockState(options, function (err, data) {
+                if (err) {
+                  console.log("ERROR: getting lock state failed", err);
+                } else {
+                  console.log("got lock states.");
+                }
                 allowCommands = true;
                 showUsage();
               });
