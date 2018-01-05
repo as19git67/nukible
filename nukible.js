@@ -50,46 +50,48 @@ _.extend(nukible.prototype, {
         }
         noble.on('stateChange', this._pairingOnStateChanged);
         noble.on('discover', function (peripheral) {
-          self._pairingOnPeripheralDiscovered.call(self, peripheral, function (err, result) {
-                noble.stopScanning();
-                noble.removeAllListeners('discover');
-                noble.removeAllListeners('stateChange');
-                if (err) {
-                  self.isPaired = false;
-                  self.isInPairing = false;
-                  clearTimeout(t);
-                  if (_.isFunction(callback)) {
-                    callback(err);
-                  }
-                } else {
-                  if (result && result.status) {
-                    switch (result.status) {
-                    case 'paired':
-                      self.isPaired = true;
-                      clearTimeout(t);
-                      if (_.isFunction(callback)) {
-                        callback(null, result.results);
-                      }
-                      break;
-                    case 'disconnected':
-                      if (self.isPaired || !self.isInPairing) {
-                        console.log("Peripheral disconnected.");
-                      } else {
+          if (peripheral.localName) {
+            self._pairingOnPeripheralDiscovered.call(self, peripheral, function (err, result) {
+                  noble.stopScanning();
+                  noble.removeAllListeners('discover');
+                  noble.removeAllListeners('stateChange');
+                  if (err) {
+                    self.isPaired = false;
+                    self.isInPairing = false;
+                    clearTimeout(t);
+                    if (_.isFunction(callback)) {
+                      callback(err);
+                    }
+                  } else {
+                    if (result && result.status) {
+                      switch (result.status) {
+                      case 'paired':
+                        self.isPaired = true;
+                        clearTimeout(t);
                         if (_.isFunction(callback)) {
-                          callback("ERROR: peripheral disconnected during pairing.");
+                          callback(null, result.results);
+                        }
+                        break;
+                      case 'disconnected':
+                        if (self.isPaired || !self.isInPairing) {
+                          console.log("Peripheral disconnected.");
+                        } else {
+                          if (_.isFunction(callback)) {
+                            callback("ERROR: peripheral disconnected during pairing.");
+                          }
+                        }
+                        break;
+                      default:
+                        if (_.isFunction(callback)) {
+                          callback("ERROR: pairing failed for unknown reason");
                         }
                       }
-                      break;
-                    default:
-                      if (_.isFunction(callback)) {
-                        callback("ERROR: pairing failed for unknown reason");
-                      }
                     }
+                    self.isInPairing = false;
                   }
-                  self.isInPairing = false;
                 }
-              }
-          );
+            );
+          }
         });
       },
 
