@@ -182,7 +182,7 @@ _.extend(nukible.prototype, {
         var self = this;
 
         // only scan for devices advertising these service UUID's (default or empty array => any peripherals
-        var serviceUuids = [nukible.prototype.nukiServiceUuid];
+        var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
 
         // allow duplicate peripheral to be returned (default false) on discovery event
         var allowDuplicates = true;
