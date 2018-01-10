@@ -59,7 +59,6 @@ _.extend(nukible.prototype, {
           if (!self.peripheralInProgress && self.peripheralQueue.length > 0) {
             self.peripheralInProgress = self.peripheralQueue.shift();
             self.knownPeripherals.push(self.peripheralInProgress.id);
-            console.log("Try to pair with peripheral " + self.peripheralInProgress.advertisement.localName);
             self._pairingOnPeripheralDiscovered.call(self, self.peripheralInProgress, function (err, result) {
               if (err) {
                 self.isPaired = false;
@@ -200,6 +199,11 @@ _.extend(nukible.prototype, {
               var peripheralId = peripheral.uuid;
               var lockPeripheralId = self.options.peripheralId;
               if (lockPeripheralId === peripheralId) {
+
+                console.log("===========================");
+                console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
+                console.log("Advertisement:");
+                console.log(peripheral.advertisement);
 
                 noble.stopScanning();
                 noble.removeAllListeners('discover');
@@ -485,15 +489,11 @@ _.extend(nukible.prototype, {
       _onPeripheralDiscovered: function (command, peripheral, callback) {
         var self = this;
 
-        var peripheralName = 'peripheral';
-        if (peripheral.advertisement.localName) {
-          peripheralName = peripheral.advertisement.localName;
-        }
-        console.log('found peripheral:', peripheralName);
-        var isConnectable = peripheral.connectable ? "" : "not ";
-        console.log(peripheralName + " is " + isConnectable + "connectable.");
+        var peripheralName = peripheral.advertisement.localName;
 
-        if (isConnectable) {
+        console.log('found peripheral:', peripheralName);
+
+        if (peripheral.connectable) {
           peripheral.connect(function (err) {
             console.log("connected to peripheral");
 
@@ -513,7 +513,7 @@ _.extend(nukible.prototype, {
 
           });
         } else {
-          callback(peripheral + " is not connectable");
+          callback(peripheralName + " is not connectable");
         }
       },
 
