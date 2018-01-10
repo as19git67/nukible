@@ -34,10 +34,60 @@ _.extend(nukible.prototype, {
         }
         this.isPaired = false;
         this.isInPairing = true;
+        this.peripheralQueue = [];
         this.knownPeripherals = [];
-        this.pairingQueue = [];
+        this.pairedPeripheralsId = Object.keys(options.nukiLocks);
         var self = this;
+
+        function discontinue(err, results) {
+          self.isInPairing = false;
+          clearInterval(i);
+          clearTimeout(t);
+          noble.stopScanning();
+          noble.removeAllListeners('discover');
+          noble.removeAllListeners('stateChange');
+          if (_.isFunction(callback)) {
+            callback(err, results);
+          }
+        }
+
+        var i = setInterval(function () {
+          if (!self.peripheralInProgress && self.peripheralQueue.length > 0) {
+            self.peripheralInProgress = self.peripheralQueue.shift();
+            self.knownPeripherals.push(self.peripheralInProgress.id);
+            console.log("Try to pair with peripheral " + self.peripheralInProgress.advertisement.localName);
+            self._pairingOnPeripheralDiscovered.call(self, self.peripheralInProgress, function (err, result) {
+              if (err) {
+                self.isPaired = false;
+                discontinue(err);
+              } else {
+                if (result && result.status) {
+                  switch (result.status) {
+                  case 'notInPairingMode':
+                    console.log(self.peripheralInProgress.advertisement.localName +
+                                " is not in pairing mode. Ignoring it.");
+                    break;
+                  case 'paired':
+                    self.isPaired = true;
+                    discontinue(null, result.results);
+                    break;
+                  case 'disconnected':
+                    if (self.isPaired || !self.isInPairing) {
+                      console.log("Peripheral disconnected.");
+                    } else {
+                      console.log("ERROR: peripheral disconnected during pairing.");
+                    }
+                    break;
+                  default:
+                    discontinue("ERROR: pairing failed for unknown reason";
+                  }
+                }
+              }
+            });
+          }
+        }, 100);
         var t = setTimeout(function () {
+          clearInterval(i);
           console.log("Timeout. Aborting pairing.");
           noble.stopScanning();
           noble.removeAllListeners('discover');
@@ -52,74 +102,22 @@ _.extend(nukible.prototype, {
         }
         noble.on('stateChange', this._pairingOnStateChanged);
         noble.on('discover', function (peripheral) {
-          if (options.alreadyPairedPeripherals) {
-            if (_.contains(options.alreadyPairedPeripherals, peripheral.uuid)) {
-              console.log("ignoring already paired peripheral " + peripheral.uuid);
-              return;
-            }
+          if (_.contains(self.pairedPeripheralsId, peripheral.id)) {
+            console.log("Ignoring already paired peripheral " + peripheral.id);
+            return;
           }
           if (!peripheral.connectable) {
-            console.log("ignoring not connectable peripheral " + peripheral.uuid);
+            console.log("Ignoring not connectable peripheral " + peripheral.id);
             return;
           }
           if (peripheral.advertisement.localName) { // Nuki locks have a name
-            if (!_.contains(self.knownPeripherals, peripheral.uuid)) {
-              console.log("adding peripheral " + peripheral.uuid + " to queue");
-              self.pairingQueue.push(peripheral);
-
-              // todo handle all peripherals in a serialized way and stop if for one pairing was possible
-
+            if (!_.contains(self.knownPeripherals, peripheral.id)) {
+              console.log("Adding peripheral " + peripheral.advertisement.localName + " to try-to-pair queue");
+              self.peripheralQueue.push(peripheral);
             }
           }
         });
       },
-
-  processPairingQueue: function () {
-    if (this.pairingQueue.length > 0) {
-      var peripheral = this.pairingQueue.shift();
-
-      self._pairingOnPeripheralDiscovered.call(self, peripheral, function (err, result) {
-        noble.stopScanning();
-        noble.removeAllListeners('discover');
-        noble.removeAllListeners('stateChange');
-        if (err) {
-          self.isPaired = false;
-          self.isInPairing = false;
-          clearTimeout(t);
-          if (_.isFunction(callback)) {
-            callback(err);
-          }
-        } else {
-          if (result && result.status) {
-            switch (result.status) {
-            case 'paired':
-              self.isPaired = true;
-              clearTimeout(t);
-              if (_.isFunction(callback)) {
-                callback(null, result.results);
-              }
-              break;
-            case 'disconnected':
-              if (self.isPaired || !self.isInPairing) {
-                console.log("Peripheral disconnected.");
-              } else {
-                if (_.isFunction(callback)) {
-                  callback("ERROR: peripheral disconnected during pairing.");
-                }
-              }
-              break;
-            default:
-              if (_.isFunction(callback)) {
-                callback("ERROR: pairing failed for unknown reason");
-              }
-            }
-          }
-          self.isInPairing = false;
-        }
-      });
-    }
-
-  },
 
       prepareEncryptedDataToSend: function (cmd, authorizationId, sharedSecret, payload) {
         var nonce = new Buffer(24);
@@ -346,16 +344,10 @@ _.extend(nukible.prototype, {
         // which could be formatted as an iBeacon.
         //
 
-        console.log('found peripheral:', peripheral.advertisement);
-
-        var peripheralName = 'peripheral';
-        if (peripheral.advertisement.localName) {
-          peripheralName = peripheral.advertisement.localName;
-        }
-        var isConnectable = peripheral.connectable ? "" : "not ";
-        console.log(peripheralName + " is " + isConnectable + "connectable.");
-
+        var peripheralName = peripheral.advertisement.localName;
         var peripheralId = peripheral.uuid;
+
+        console.log('Try to pair with peripheral:', peripheralName);
 
         //
         // Once the peripheral has been discovered, then connect to it.
@@ -436,9 +428,6 @@ _.extend(nukible.prototype, {
                 console.log("All nuki.io characteristics that are needed for pairing were found.");
 
                 self.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY;
-
-                // we found a peripheral, stop scanning
-                noble.stopScanning();
 
                 self.nukiPairingGeneralDataIOCharacteristic.subscribe(function () {
                   self.nukiPairingGeneralDataIOCharacteristic.on('read', function (data, isNotification) {
