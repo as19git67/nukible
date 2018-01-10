@@ -187,7 +187,6 @@ _.extend(nukible.prototype, {
         // allow duplicate peripheral to be returned (default false) on discovery event
         var allowDuplicates = true;
 
-
         var t = setTimeout(function () {
           console.log("Timeout. Aborting getLockState.");
           noble.stopScanning();
@@ -201,6 +200,7 @@ _.extend(nukible.prototype, {
           console.log("start scanning");
           noble.startScanning(serviceUuids, allowDuplicates);
         }
+        var previousStateBuffer = new Buffer();
         noble.on('stateChange', this._onStateChanged);
         noble.on('discover',
             function (peripheral) {
@@ -208,10 +208,21 @@ _.extend(nukible.prototype, {
               var lockPeripheralId = self.options.peripheralId;
               if (lockPeripheralId === peripheralId) {
 
-                console.log("===========================");
-                console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
-                console.log("Manufacturer data:");
-                console.log(peripheral.advertisement.manufacturerData);
+                if (peripheral.advertisement.manufacturerData.length >= 24) {
+                  var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
+
+                  if (!previousStateBuffer.equals(stateBuffer)) {
+                    console.log("===========================");
+                    console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
+                    console.log("Manufacturer data:");
+                    console.log(peripheral.advertisement.manufacturerData);
+                    var len = peripheral.advertisement.manufacturerData.readUInt8(3);
+                    var serviceUUid = peripheral.advertisement.manufacturerData.slice(4, 4 + 16);
+                    console.log("service uuid: " + serviceUUid.toString('hex'));
+                    console.log("state: " + stateBuffer.toString('hex'));
+                    previousStateBuffer = stateBuffer;
+                  }
+                }
 
                 // noble.stopScanning();
                 // noble.removeAllListeners('discover');
@@ -234,8 +245,6 @@ _.extend(nukible.prototype, {
                 //     }
                 //   }
                 // });
-              } else {
-                console.log("ignoring peripheral with id " + peripheralId);
               }
             });
       },
