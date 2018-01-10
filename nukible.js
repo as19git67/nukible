@@ -40,12 +40,16 @@ _.extend(nukible.prototype, {
         var self = this;
 
         function discontinue(err, results) {
-          self.isInPairing = false;
           clearInterval(i);
           clearTimeout(t);
+
           noble.stopScanning();
           noble.removeAllListeners('discover');
           noble.removeAllListeners('stateChange');
+
+          self.isInPairing = false;
+          delete self.peripheralInProgress;
+
           if (_.isFunction(callback)) {
             callback(err, results);
           }
@@ -66,6 +70,7 @@ _.extend(nukible.prototype, {
                   case 'notInPairingMode':
                     console.log(self.peripheralInProgress.advertisement.localName +
                                 " is not in pairing mode. Ignoring it.");
+                    delete self.peripheralInProgress;
                     break;
                   case 'paired':
                     self.isPaired = true;
@@ -77,6 +82,7 @@ _.extend(nukible.prototype, {
                     } else {
                       console.log("ERROR: peripheral disconnected during pairing.");
                     }
+                    delete self.peripheralInProgress;
                     break;
                   default:
                     discontinue("ERROR: pairing failed for unknown reason");
@@ -892,8 +898,8 @@ _.extend(nukible.prototype, {
               var errorCommandId = data.readUInt16LE(3);
               switch (errorCode) {
               case nukible.prototype.P_ERROR_NOT_PAIRING:
-                callback(
-                    "ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                callback(null, {status: 'notInPairingMode'});
                 break;
               default:
                 callback("ERROR from SL: " + errorCode.toString(16));
