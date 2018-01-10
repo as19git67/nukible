@@ -79,7 +79,7 @@ _.extend(nukible.prototype, {
                     }
                     break;
                   default:
-                    discontinue("ERROR: pairing failed for unknown reason";
+                    discontinue("ERROR: pairing failed for unknown reason");
                   }
                 }
               }
