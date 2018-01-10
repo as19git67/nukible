@@ -180,6 +180,14 @@ _.extend(nukible.prototype, {
           _.defaults(this.options, options);
         }
         var self = this;
+
+        // only scan for devices advertising these service UUID's (default or empty array => any peripherals
+        var serviceUuids = [nukible.prototype.nukiServiceUuid];
+
+        // allow duplicate peripheral to be returned (default false) on discovery event
+        var allowDuplicates = true;
+
+
         var t = setTimeout(function () {
           console.log("Timeout. Aborting getLockState.");
           noble.stopScanning();
@@ -189,9 +197,9 @@ _.extend(nukible.prototype, {
             callback("getLockState timeout");
           }
         }, 30000);
-        if (noble.state == 'poweredOn') {
+        if (noble.state === 'poweredOn') {
           console.log("start scanning");
-          noble.startScanning();
+          noble.startScanning(serviceUuids, allowDuplicates);
         }
         noble.on('stateChange', this._onStateChanged);
         noble.on('discover',
@@ -202,30 +210,30 @@ _.extend(nukible.prototype, {
 
                 console.log("===========================");
                 console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
-                console.log("Advertisement:");
-                console.log(peripheral.advertisement);
+                console.log("Manufacturer data:");
+                console.log(peripheral.advertisement.manufacturerData);
 
-                noble.stopScanning();
-                noble.removeAllListeners('discover');
-                noble.removeAllListeners('stateChange');
-                self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
-                  clearTimeout(t);
-                  if (err) {
-                    if (_.isFunction(callback)) {
-                      callback(err);
-                    }
-                  } else {
-                    if (result && result.status === 'complete') {
-                      if (_.isFunction(callback)) {
-                        callback(null);
-                      }
-                    } else {
-                      if (_.isFunction(callback)) {
-                        callback("ERROR: unknown");
-                      }
-                    }
-                  }
-                });
+                // noble.stopScanning();
+                // noble.removeAllListeners('discover');
+                // noble.removeAllListeners('stateChange');
+                // self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
+                //   clearTimeout(t);
+                //   if (err) {
+                //     if (_.isFunction(callback)) {
+                //       callback(err);
+                //     }
+                //   } else {
+                //     if (result && result.status === 'complete') {
+                //       if (_.isFunction(callback)) {
+                //         callback(null);
+                //       }
+                //     } else {
+                //       if (_.isFunction(callback)) {
+                //         callback("ERROR: unknown");
+                //       }
+                //     }
+                //   }
+                // });
               } else {
                 console.log("ignoring peripheral with id " + peripheralId);
               }
@@ -659,25 +667,32 @@ _.extend(nukible.prototype, {
                   var lock = self.options.nukiLock;
                   if (lock) {
                     var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
-                    var data1 = new Buffer(6);
-                    data1.writeUInt8(2, 0); // 0x02 is lock
-                    data1.writeUInt32LE(self.options.appId, 1);
-                    data1.writeUInt8(0, 5); // no flags set
-                    var wData = Buffer.concat([data1, nonceK]);
-                    var wDataEncrypted = self.prepareEncryptedDataToSend(
-                        nukible.prototype.CMD_NUKI_STATES,
-                        lock.nukiAuthorizationId,
-                        sharedSecret,
-                        wData);
+                    self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
+                          if (err) {
+                            peripheral.disconnect();
+                            callback(err);
+                          } else {
+                            var data1 = new Buffer(6);
+                            data1.writeUInt8(2, 0); // 0x02 is lock
+                            data1.writeUInt32LE(self.options.appId, 1);
+                            data1.writeUInt8(0, 5); // no flags set
+                            var wData = Buffer.concat([data1, nonceK]);
+                            var wDataEncrypted = self.prepareEncryptedDataToSend(
+                                nukible.prototype.CMD_NUKI_STATES,
+                                lock.nukiAuthorizationId,
+                                sharedSecret,
+                                wData);
 
-                    self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                      if (err) {
-                        console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
-                        peripheral.disconnect();
-                        callback(err);
-                      }
-                    });
-
+                            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+                              if (err) {
+                                console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
+                                peripheral.disconnect();
+                                callback(err);
+                              }
+                            });
+                          }
+                        }
+                    );
                   } else {
                     callback("Not paired with this lock. Peripheral UUID is " + peripheral.uuid);
                   }
