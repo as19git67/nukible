@@ -154,23 +154,64 @@ _.extend(nukible.prototype, {
 
       },
 
-      scan: function (callback) {
+  scan: function (options, callback) {
+    if (options) {
+      _.defaults(this.options, options);
+    }
         var self = this;
-        noble.on('stateChange', function (bleState) {
-          if (bleState === 'poweredOn') {
-            console.log('scanning for nuki.io Bluetooth LE services...');
-            noble.startScanning();
-          } else {
-            noble.stopScanning();
-          }
-        });
-        noble.on('discover', function (peripheral) {
-          if (peripheral.advertisement.localName) {
-            console.log("===========================");
-            console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
-            console.log("Advertisement:");
-            console.log(peripheral.advertisement);
-            callback(null, peripheral);
+
+    // only scan for devices advertising these service UUID's (default or empty array => any peripherals
+    var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
+
+    // allow duplicate peripheral to be returned (default false) on discovery event
+    var allowDuplicates = true;
+
+    if (noble.state === 'poweredOn') {
+      console.log("start scanning");
+      noble.startScanning(serviceUuids, allowDuplicates);
+    }
+    var previousStateBuffer = new Buffer(0);
+    noble.on('stateChange', this._onStateChanged);
+    noble.on('discover',
+        function (peripheral) {
+          var peripheralId = peripheral.uuid;
+          var lockPeripheralId = self.options.peripheralId;
+          if (lockPeripheralId === peripheralId) {
+
+            if (peripheral.advertisement.manufacturerData.length >= 24) {
+              var serviceUUidStr = peripheral.advertisement.manufacturerData.slice(4, 4 + 16).toString('hex');
+              if (serviceUUid === nukible.prototype.nukiServiceUuid) {
+                var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
+                if (!previousStateBuffer.equals(stateBuffer)) {
+                  console.log("===========================");
+                  console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi + " has state: " +
+                              stateBuffer.toString('hex'));
+                  previousStateBuffer = stateBuffer;
+                }
+              }
+            }
+
+            // noble.stopScanning();
+            // noble.removeAllListeners('discover');
+            // noble.removeAllListeners('stateChange');
+            // self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
+            //   clearTimeout(t);
+            //   if (err) {
+            //     if (_.isFunction(callback)) {
+            //       callback(err);
+            //     }
+            //   } else {
+            //     if (result && result.status === 'complete') {
+            //       if (_.isFunction(callback)) {
+            //         callback(null);
+            //       }
+            //     } else {
+            //       if (_.isFunction(callback)) {
+            //         callback("ERROR: unknown");
+            //       }
+            //     }
+            //   }
+            // });
           }
         });
       },
@@ -208,43 +249,27 @@ _.extend(nukible.prototype, {
               var lockPeripheralId = self.options.peripheralId;
               if (lockPeripheralId === peripheralId) {
 
-                if (peripheral.advertisement.manufacturerData.length >= 24) {
-                  var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
-
-                  if (!previousStateBuffer.equals(stateBuffer)) {
-                    console.log("===========================");
-                    console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi);
-                    console.log("Manufacturer data:");
-                    console.log(peripheral.advertisement.manufacturerData);
-                    var len = peripheral.advertisement.manufacturerData.readUInt8(3);
-                    var serviceUUid = peripheral.advertisement.manufacturerData.slice(4, 4 + 16);
-                    console.log("service uuid: " + serviceUUid.toString('hex'));
-                    console.log("state: " + stateBuffer.toString('hex'));
-                    previousStateBuffer = stateBuffer;
+                noble.stopScanning();
+                noble.removeAllListeners('discover');
+                noble.removeAllListeners('stateChange');
+                self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
+                  clearTimeout(t);
+                  if (err) {
+                    if (_.isFunction(callback)) {
+                      callback(err);
+                    }
+                  } else {
+                    if (result && result.status === 'complete') {
+                      if (_.isFunction(callback)) {
+                        callback(null);
+                      }
+                    } else {
+                      if (_.isFunction(callback)) {
+                        callback("ERROR: unknown");
+                      }
+                    }
                   }
-                }
-
-                // noble.stopScanning();
-                // noble.removeAllListeners('discover');
-                // noble.removeAllListeners('stateChange');
-                // self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
-                //   clearTimeout(t);
-                //   if (err) {
-                //     if (_.isFunction(callback)) {
-                //       callback(err);
-                //     }
-                //   } else {
-                //     if (result && result.status === 'complete') {
-                //       if (_.isFunction(callback)) {
-                //         callback(null);
-                //       }
-                //     } else {
-                //       if (_.isFunction(callback)) {
-                //         callback("ERROR: unknown");
-                //       }
-                //     }
-                //   }
-                // });
+                });
               }
             });
       },

@@ -102,11 +102,11 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
-              nuki.getLockState(options, function (err, data) {
+              nuki.scan(options, function (err, data) {
                 if (err) {
-                  console.log("ERROR: getting lock state failed", err);
+                  console.log("ERROR: scanning for nuki lock state change failed", err);
                 } else {
-                  console.log("got lock states.");
+                  console.log("got lock states.", data);
                 }
                 allowCommands = true;
                 showUsage();
