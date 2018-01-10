@@ -180,7 +180,7 @@ _.extend(nukible.prototype, {
 
             if (peripheral.advertisement.manufacturerData.length >= 24) {
               var serviceUUidStr = peripheral.advertisement.manufacturerData.slice(4, 4 + 16).toString('hex');
-              if (serviceUUid === nukible.prototype.nukiServiceUuid) {
+              if (serviceUUidStr === nukible.prototype.nukiServiceUuid) {
                 var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
                 if (!previousStateBuffer.equals(stateBuffer)) {
                   console.log("===========================");
