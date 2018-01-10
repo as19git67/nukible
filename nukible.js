@@ -200,7 +200,7 @@ _.extend(nukible.prototype, {
           console.log("start scanning");
           noble.startScanning(serviceUuids, allowDuplicates);
         }
-        var previousStateBuffer = new Buffer();
+        var previousStateBuffer = new Buffer(0);
         noble.on('stateChange', this._onStateChanged);
         noble.on('discover',
             function (peripheral) {
