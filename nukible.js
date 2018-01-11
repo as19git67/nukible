@@ -154,7 +154,7 @@ _.extend(nukible.prototype, {
 
       },
 
-  scan: function (options, callback) {
+  scanForLockStateChanges: function (options, callback) {
     if (options) {
       _.defaults(this.options, options);
     }
@@ -165,6 +165,9 @@ _.extend(nukible.prototype, {
 
     // allow duplicate peripheral to be returned (default false) on discovery event
     var allowDuplicates = true;
+
+    var newStateAvail = false;
+    var waitForBridgeReadTimeout;
 
     if (noble.state === 'poweredOn') {
       console.log("start scanning");
@@ -183,10 +186,36 @@ _.extend(nukible.prototype, {
               if (serviceUUidStr === nukible.prototype.nukiServiceUuid) {
                 var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
                 if (!previousStateBuffer.equals(stateBuffer)) {
-                  console.log("===========================");
+                  var currentlyReadingLockState = false;
                   console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi + " has state: " +
                               stateBuffer.toString('hex'));
                   previousStateBuffer = stateBuffer;
+                  var byte4 = stateBuffer.readUInt8(3);
+                  var hasStateChange = (byte4 & 0x1) !== 0;
+
+                  if (!newStateAvail && hasStateChange) {
+                    // lock has signalled new state avail
+                    waitForBridgeReadTimeout = setTimeout(function () {
+                      if (!currentlyReadingLockState) {
+                        console.log("WARNING: reading lock state after bridge did not read it for 10 seconds");
+                        currentlyReadingLockState = true;
+                        self.getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                          currentlyReadingLockState = false;
+                          callback(err, result);
+                        });
+                      }
+                    }, 10000);
+                  }
+                  if (newStateAvail && !hasStateChange) {
+                    // lock no more signals new state avail
+                    clearTimeout(waitForBridgeReadTimeout);
+                    console.log("Reading lock state after bridge read it");
+                    currentlyReadingLockState = true;
+                    self.getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                      currentlyReadingLockState = false;
+                      callback(err, result);
+                    });
+                  }
                 }
               }
             }
