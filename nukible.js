@@ -26,7 +26,10 @@ _.extend(nukible.prototype, {
 
       initialize: function () {
         console.log("initialize");
-        noble.on('stateChange', this._onStateChanged);
+        var self = this;
+        noble.on('stateChange', function (bleState) {
+          self._onStateChanged.call(self, bleState);
+        });
         this._startBleScan();
       },
 
@@ -286,7 +289,6 @@ _.extend(nukible.prototype, {
             console.log("start scanning");
             noble.startScanning();
           }
-          noble.on('stateChange', this._onStateChanged);
           noble.on('discover',
               function (peripheral) {
                 var peripheralId = peripheral.uuid;
@@ -343,7 +345,6 @@ _.extend(nukible.prototype, {
             console.log("start scanning");
             noble.startScanning();
           }
-          noble.on('stateChange', this._onStateChanged);
           noble.on('discover',
               function (peripheral) {
                 var peripheralId = peripheral.uuid;
@@ -524,6 +525,7 @@ _.extend(nukible.prototype, {
   },
 
       _onStateChanged: function (bleState) {
+        console.log("new noble state: " + bleState);
         if (bleState === 'poweredOn') {
           this._startBleScan();
         } else {
