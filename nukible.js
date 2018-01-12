@@ -23,24 +23,11 @@ var nukible = module.exports = function (options) {
 
 // Attach all inheritable methods to the nukible prototype.
 _.extend(nukible.prototype, {
-  _startBleScan: function () {
-    noble.stopScanning();
 
-    console.log("start scanning");
-    // only scan for devices advertising these service UUID's (default or empty array => any peripherals
-    var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
-
-    // allow duplicate peripheral to be returned (default false) on discovery event
-    var allowDuplicates = true;
-    noble.startScanning(serviceUuids, allowDuplicates);
-  },
-
-      // Initialize is an empty function by default. Override it with your own
-      // initialization logic.
       initialize: function () {
-        if (noble.state === 'poweredOn') {
-          this._startBleScan();
-        }
+        console.log("initialize");
+        noble.on('stateChange', this._onStateChanged);
+        this._startBleScan();
       },
 
       pair: function (options, callback) {
@@ -118,7 +105,6 @@ _.extend(nukible.prototype, {
         if (noble.state == 'poweredOn') {
           noble.startScanning();
         }
-        noble.on('stateChange', this._pairingOnStateChanged);
         noble.on('discover', function (peripheral) {
           if (_.contains(self.pairedPeripheralsId, peripheral.id)) {
             console.log("Ignoring already paired peripheral " + peripheral.id);
@@ -177,7 +163,6 @@ _.extend(nukible.prototype, {
     var waitForBridgeReadTimeout;
 
     var previousStateBuffer = new Buffer(0);
-    noble.on('stateChange', this._onStateChanged);
     noble.on('discover',
         function (peripheral) {
           var peripheralId = peripheral.uuid;
@@ -392,16 +377,6 @@ _.extend(nukible.prototype, {
         }
       },
 
-      _pairingOnStateChanged: function (bleState) {
-        if (bleState === 'poweredOn') {
-          console.log('scanning for nuki.io Bluetooth LE services...');
-          //noble.startScanning([nukible.prototype.nukiPairingServiceUuid, nukible.prototype.nukiServiceUuid], true);
-          this._startBleScan();
-        } else {
-          noble.stopScanning();
-        }
-      },
-
       _pairingOnPeripheralDiscovered: function (peripheral, callback) {
         var self = this;
         //
@@ -532,11 +507,24 @@ _.extend(nukible.prototype, {
         }
       },
 
+  _startBleScan: function () {
+    noble.stopScanning();
+    if (bleState === 'poweredOn') {
+      console.log('scanning for nuki.io Bluetooth LE services...');
+      // only scan for devices advertising these service UUID's (default or empty array => any peripherals
+      var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
+
+      // allow duplicate peripheral to be returned (default false) on discovery event
+      var allowDuplicates = true;
+      noble.startScanning(serviceUuids, allowDuplicates);
+    } else {
+      console.log("Can't start scan, because bluetooth device is not powered on");
+    }
+  },
+
       _onStateChanged: function (bleState) {
         if (bleState === 'poweredOn') {
-          console.log('scanning for nuki.io Bluetooth LE services...');
-          //noble.startScanning([nukible.prototype.nukiServiceUuid], true);
-          noble.startScanning();
+          this._startBleScan();
         } else {
           noble.stopScanning();
         }
