@@ -574,7 +574,6 @@ _.extend(nukible.prototype, {
       },
 
       _onPeripheralServiceDiscovered: function (command, peripheral, services, callback) {
-        console.log("_onPeripheralServiceDiscovered: " + command);
         var self = this;
         this._currentCommand = command;
         this.nukiGeneralDataIOCharacteristic = null;
