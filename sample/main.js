@@ -113,6 +113,27 @@ function handleKeyboard() {
               });
             }
             break;
+          case 'i':
+            if (isPaired()) {
+              allowCommands = false;
+              options = {
+                appId: appId,
+                appType: appType,
+                name: name,
+                nukiLock: firstLock,
+                peripheralId: peripheralId
+              };
+              nuki.getLockState(options, function (err, data) {
+                if (err) {
+                  console.log("ERROR: getLockState failed", err);
+                } else {
+                  console.log(data);
+                }
+                allowCommands = true;
+                showUsage();
+              });
+            }
+            break;
           case 'l':
             if (isPaired()) {
               allowCommands = false;

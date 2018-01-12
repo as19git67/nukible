@@ -154,6 +154,21 @@ _.extend(nukible.prototype, {
 
       },
 
+      getLockState: function (options, callback) {
+        if (options) {
+          _.defaults(this.options, options);
+        }
+        var self = this;
+
+        noble.on('discover', function (peripheral) {
+          var peripheralId = peripheral.uuid;
+          var lockPeripheralId = self.options.peripheralId;
+          if (lockPeripheralId === peripheralId) {
+            self.getLockStateOfPeripheral.call(self, options, peripheral, callback);
+          }
+        });
+      },
+
       scanForLockStateChanges: function (options, callback) {
         if (options) {
           _.defaults(this.options, options);
