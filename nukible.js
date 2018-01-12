@@ -191,7 +191,7 @@ _.extend(nukible.prototype, {
                               stateBuffer.toString('hex'));
                   previousStateBuffer = stateBuffer;
                   var byte5 = stateBuffer.readUInt8(4);
-                  console.log("byte4: " + byte5.toString(16));
+                  // console.log("byte4: " + byte5.toString(16));
                   var hasStateChange = (byte5 & 0x1) !== 0;
 
                   if (!newStateAvail && hasStateChange) {
