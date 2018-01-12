@@ -613,7 +613,7 @@ _.extend(nukible.prototype, {
                 self.nukiUserSpecificDataInputOutputCharacteristic) {
               console.log("All nuki.io characteristics that are needed were found.");
 
-              this.receivedData = new Buffer(0);
+              self.receivedData = new Buffer(0);
 
               self.nukiUserSpecificDataInputOutputCharacteristic.subscribe(function () {
                 self.nukiUserSpecificDataInputOutputCharacteristic.on('read', function (data, isNotification) {
@@ -872,7 +872,7 @@ _.extend(nukible.prototype, {
                   }
                   switch (cmdId) {
                   case nukible.prototype.CMD_CHALLENGE:
-                    console.log("CHALLENGE received:", payload, payload.length);
+                    // console.log("CHALLENGE received:", payload, payload.length);
                     if (this.callbackForChallenge) {
                       this.callbackForChallenge(null, payload);
                     }
