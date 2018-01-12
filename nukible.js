@@ -889,8 +889,8 @@ _.extend(nukible.prototype, {
                     }
                     break;
                   case nukible.prototype.CMD_ERROR:
-                    var errorCode = data.readUInt8(2);
-                    var errorCommandId = data.readUInt16LE(3);
+                    var errorCode = payload.readUInt8(0);
+                    var errorCommandId = payload.readUInt16LE(1);
                     switch (errorCode) {
                     case nukible.prototype.P_ERROR_NOT_PAIRING:
                       //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
