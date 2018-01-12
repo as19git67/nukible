@@ -727,7 +727,7 @@ _.extend(nukible.prototype, {
                           } else {
                             console.log("Nonce received from lock:", nonceK);
                             var data1 = new Buffer(6);
-                            data1.writeUInt8(2, 0); // 0x02 is lock
+                            data1.writeUInt8(1, 0); // 0x01 is request data
                             data1.writeUInt32LE(self.options.appId, 1);
                             data1.writeUInt8(0, 5); // no flags set
                             var wData = Buffer.concat([data1, nonceK]);
