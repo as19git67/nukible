@@ -509,6 +509,7 @@ _.extend(nukible.prototype, {
 
   _startBleScan: function () {
     noble.stopScanning();
+    var bleState = noble.state;
     if (bleState === 'poweredOn') {
       console.log('scanning for nuki.io Bluetooth LE services...');
       // only scan for devices advertising these service UUID's (default or empty array => any peripherals
