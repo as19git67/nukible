@@ -737,6 +737,7 @@ _.extend(nukible.prototype, {
                                 sharedSecret,
                                 wData);
 
+                            console.log("sending command request");
                             self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
                               if (err) {
                                 console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
@@ -859,7 +860,7 @@ _.extend(nukible.prototype, {
                   sharedSecret);
 
               if (this._crcOk(decryptedMessge)) {
-                // console.log("CRC ok. Decrypted Message:", decryptedMessge);
+                console.log("CRC ok. Decrypted Message:", decryptedMessge);
 
                 var authorizationId = decryptedMessge.readUInt32LE(0);
                 if (authorizationId === lock.nukiAuthorizationId) {
