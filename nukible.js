@@ -613,6 +613,8 @@ _.extend(nukible.prototype, {
                 self.nukiUserSpecificDataInputOutputCharacteristic) {
               console.log("All nuki.io characteristics that are needed were found.");
 
+              this.receivedData = new Buffer(0);
+
               self.nukiUserSpecificDataInputOutputCharacteristic.subscribe(function () {
                 self.nukiUserSpecificDataInputOutputCharacteristic.on('read', function (data, isNotification) {
                   self._dataReceived.call(self, peripheral, data, isNotification, function (err, status) {
