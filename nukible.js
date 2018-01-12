@@ -725,7 +725,7 @@ _.extend(nukible.prototype, {
                             peripheral.disconnect();
                             callback(err);
                           } else {
-                            console.log("Nonce received from lock");
+                            console.log("Nonce received from lock:", nonceK);
                             var data1 = new Buffer(6);
                             data1.writeUInt8(2, 0); // 0x02 is lock
                             data1.writeUInt32LE(self.options.appId, 1);
