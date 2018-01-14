@@ -726,11 +726,13 @@ _.extend(nukible.prototype, {
                             callback(err);
                           } else {
                             console.log("Nonce received from lock:", nonceK);
+                            var data1 = new Buffer(2);
+                            data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
                             var wDataEncrypted = self.prepareEncryptedDataToSend(
-                                nukible.prototype.CMD_NUKI_STATES,
+                                nukible.prototype.CMD_REQUEST_DATA,
                                 lock.nukiAuthorizationId,
                                 sharedSecret,
-                                nonceK);
+                                data1);
 
                             console.log("sending command request");
                             self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
