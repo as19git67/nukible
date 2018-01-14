@@ -992,10 +992,8 @@ _.extend(nukible.prototype, {
         var timeOffset = payload.readInt16LE(10);
         var nukiTime = moment(
             {year: year, month: month - 1, day: day, hour: hour, minute: minute, second: second});
-        nukiTime.utcOffset(120);
+        nukiTime.utcOffset(timeOffset);
 
-        console.log("nuki time: " + nukiTime.format());
-        console.log("nuki timezone: " + timeOffset);
         nukiStates.time = nukiTime;
         nukiStates.timeOffset = timeOffset;
 
