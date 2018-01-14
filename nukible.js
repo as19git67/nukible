@@ -699,52 +699,47 @@ _.extend(nukible.prototype, {
                     });
                     break;
                   case 'getLockState':
-                    console.log("Starting getLockState command");
+                    // console.log("Starting getLockState command");
 
-                    /*
-                                        var data1 = new Buffer(6);
-                                        data1.writeUInt8(2, 0); // 0x02 is lock
-                                        data1.writeUInt32LE(self.options.appId, 1);
-                                        data1.writeUInt8(0, 5); // no flags set
-                                        var wDataEncrypted = self.prepareEncryptedDataToSend(
-                                            nukible.prototype.CMD_NUKI_STATES,
-                                            lock.nukiAuthorizationId,
-                                            sharedSecret,
-                                            data1);
+                    var data1 = new Buffer(2);
+                    data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
+                    var wDataEncrypted = self.prepareEncryptedDataToSend(
+                        nukible.prototype.CMD_REQUEST_DATA,
+                        lock.nukiAuthorizationId,
+                        sharedSecret,
+                        data1);
 
-                                        self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                                          if (err) {
-                                            console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
-                                            peripheral.disconnect();
-                                            callback(err);
-                                          }
-                                        });
-                    */
-                    self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
-                          if (err) {
-                            peripheral.disconnect();
-                            callback(err);
-                          } else {
-                            console.log("Nonce received from lock:", nonceK);
-                            var data1 = new Buffer(2);
-                            data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
-                            var wDataEncrypted = self.prepareEncryptedDataToSend(
-                                nukible.prototype.CMD_REQUEST_DATA,
-                                lock.nukiAuthorizationId,
-                                sharedSecret,
-                                data1);
-
-                            console.log("sending command request");
-                            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                              if (err) {
-                                console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
-                                peripheral.disconnect();
-                                callback(err);
-                              }
-                            });
-                          }
-                        }
-                    );
+                    self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+                      if (err) {
+                        console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
+                        peripheral.disconnect();
+                        callback(err);
+                      }
+                    });
+                    // self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
+                    //       if (err) {
+                    //         peripheral.disconnect();
+                    //         callback(err);
+                    //       } else {
+                    //         // console.log("Nonce received from lock:", nonceK);
+                    //         var data1 = new Buffer(2);
+                    //         data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
+                    //         var wDataEncrypted = self.prepareEncryptedDataToSend(
+                    //             nukible.prototype.CMD_REQUEST_DATA,
+                    //             lock.nukiAuthorizationId,
+                    //             sharedSecret,
+                    //             data1);
+                    //
+                    //         self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+                    //           if (err) {
+                    //             console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
+                    //             peripheral.disconnect();
+                    //             callback(err);
+                    //           }
+                    //         });
+                    //       }
+                    //     }
+                    // );
                     break;
                   default:
                     callback("Command (" + self._currentCommand + ") not implemented");
@@ -800,7 +795,7 @@ _.extend(nukible.prototype, {
       },
 
       _dataReceived: function (peripheral, data, isNotification, callback) {
-        console.log("DATA received", data);
+        // console.log("DATA received", data);
         this.receivedData = Buffer.concat([this.receivedData, data]);
 
         if (data.length < 20) {     // hack
@@ -857,7 +852,7 @@ _.extend(nukible.prototype, {
                   sharedSecret);
 
               if (this._crcOk(decryptedMessge)) {
-                console.log("CRC ok. Decrypted Message:", decryptedMessge);
+                // console.log("CRC ok. Decrypted Message:", decryptedMessge);
 
                 var authorizationId = decryptedMessge.readUInt32LE(0);
                 if (authorizationId === lock.nukiAuthorizationId) {
@@ -945,7 +940,7 @@ _.extend(nukible.prototype, {
         case 1:
           nukiStates.nukiStateStr = "pairing mode";
           break;
-        case 3:
+        case 2:
           nukiStates.nukiStateStr = "door mode";
           break;
         }
@@ -995,12 +990,14 @@ _.extend(nukible.prototype, {
         var minute = payload.readUInt8(8);
         var second = payload.readUInt8(9);
         var timeOffset = payload.readInt16LE(10);
-        var nukiTime = moment.utc(
+        var nukiTime = moment(
             {year: year, month: month - 1, day: day, hour: hour, minute: minute, second: second});
+        nukiTime.utcOffset(120);
 
         console.log("nuki time: " + nukiTime.format());
         console.log("nuki timezone: " + timeOffset);
-        nukiStates.timeUtc = nukiTime;
+        nukiStates.time = nukiTime;
+        nukiStates.timeOffset = timeOffset;
 
         nukiStates.batteryCritical = payload.readUInt8(12) !== 0;
         nukiStates.batteryCriticalStr = "ok";
