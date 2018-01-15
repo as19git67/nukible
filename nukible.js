@@ -126,10 +126,6 @@ _.extend(nukible.prototype, {
         var self = this;
         this._currentCommand = command;
         this.nukiUserSpecificDataInputOutputCharacteristic = null;
-        //
-        // This must be the service we were looking for.
-        //
-        console.log('found service:', nukiService.uuid);
 
         //
         // So, discover its characteristics.
@@ -461,6 +457,34 @@ _.extend(nukible.prototype, {
         return nukiStates;
       },
 
+      _getLockStateOfPeripheral: function (options, peripheral, callback) {
+        // console.log("_getLockStateOfPeripheral called");
+        if (this._commandInProgress) {
+          callback("Other command still in progress");
+        } else {
+          this._commandInProgress = true;
+          var self = this;
+          this._onPeripheralDiscovered("getLockState", peripheral, function (err, result) {
+            self._commandInProgress = false;
+            if (err) {
+              if (_.isFunction(callback)) {
+                callback(err);
+              }
+            } else {
+              if (result) {
+                if (_.isFunction(callback)) {
+                  callback(null, result);
+                }
+              } else {
+                if (_.isFunction(callback)) {
+                  callback("ERROR: unknown");
+                }
+              }
+            }
+          });
+        }
+      },
+
       _dataReceived: function (peripheral, data, isNotification, callback) {
         // console.log("DATA received", data);
         var errorCode;
@@ -594,7 +618,7 @@ _.extend(nukible.prototype, {
           var peripheralId = peripheral.uuid;
           var lockPeripheralId = self.options.peripheralId;
           if (lockPeripheralId === peripheralId) {
-            self.getLockStateOfPeripheral.call(self, options, peripheral, callback);
+            self._getLockStateOfPeripheral.call(self, options, peripheral, callback);
           }
         });
       },
@@ -609,104 +633,53 @@ _.extend(nukible.prototype, {
         var waitForBridgeReadTimeout;
 
         var previousStateBuffer = new Buffer(0);
-        noble.on('discover',
-            function (peripheral) {
-              var peripheralId = peripheral.uuid;
-              var lockPeripheralId = self.options.peripheralId;
-              if (lockPeripheralId === peripheralId) {
+        noble.on('discover', function (peripheral) {
+          var peripheralId = peripheral.uuid;
+          var lockPeripheralId = self.options.peripheralId;
+          if (lockPeripheralId === peripheralId) {
 
-                if (peripheral.advertisement.manufacturerData.length >= 24) {
-                  var serviceUUidStr = peripheral.advertisement.manufacturerData.slice(4, 4 + 16).toString('hex');
-                  if (serviceUUidStr === nukible.prototype.nukiServiceUuid) {
-                    var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
-                    if (!previousStateBuffer.equals(stateBuffer)) {
-                      var currentlyReadingLockState = false;
-                      console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi + " has state: " +
-                                  stateBuffer.toString('hex'));
-                      previousStateBuffer = stateBuffer;
-                      var byte5 = stateBuffer.readUInt8(4);
-                      // console.log("byte4: " + byte5.toString(16));
-                      var hasStateChange = (byte5 & 0x1) !== 0;
+            if (peripheral.advertisement.manufacturerData.length >= 24) {
+              var serviceUUidStr = peripheral.advertisement.manufacturerData.slice(4, 4 + 16).toString('hex');
+              if (serviceUUidStr === nukible.prototype.nukiServiceUuid) {
+                var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
+                if (!previousStateBuffer.equals(stateBuffer)) {
+                  var currentlyReadingLockState = false;
+                  console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi + " has state: " +
+                              stateBuffer.toString('hex'));
+                  previousStateBuffer = stateBuffer;
+                  var byte5 = stateBuffer.readUInt8(4);
+                  // console.log("byte4: " + byte5.toString(16));
+                  var hasStateChange = (byte5 & 0x1) !== 0;
 
-                      if (!newStateAvail && hasStateChange) {
-                        // lock has signalled new state avail
-                        waitForBridgeReadTimeout = setTimeout(function () {
-                          if (!currentlyReadingLockState) {
-                            console.log("WARNING: reading lock state after bridge did not read it for 10 seconds");
-                            currentlyReadingLockState = true;
-                            self.getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
-                              currentlyReadingLockState = false;
-                              callback(err, result);
-                            });
-                          }
-                        }, 10000);
-                      }
-                      if (newStateAvail && !hasStateChange) {
-                        // lock no more signals new state avail
-                        clearTimeout(waitForBridgeReadTimeout);
-                        console.log("Reading lock state after bridge read it");
+                  if (!newStateAvail && hasStateChange) {
+                    // lock has signalled new state avail
+                    waitForBridgeReadTimeout = setTimeout(function () {
+                      if (!currentlyReadingLockState) {
+                        console.log("WARNING: reading lock state after bridge did not read it for 10 seconds");
                         currentlyReadingLockState = true;
-                        self.getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                        self._getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
                           currentlyReadingLockState = false;
                           callback(err, result);
                         });
                       }
-                      newStateAvail = hasStateChange;
-                    }
+                    }, 10000);
                   }
-                }
-
-                // noble.stopScanning();
-                // noble.removeAllListeners('discover');
-                // noble.removeAllListeners('stateChange');
-                // self._onPeripheralDiscovered.call(self, "getLockState", peripheral, function (err, result) {
-                //   clearTimeout(t);
-                //   if (err) {
-                //     if (_.isFunction(callback)) {
-                //       callback(err);
-                //     }
-                //   } else {
-                //     if (result && result.status === 'complete') {
-                //       if (_.isFunction(callback)) {
-                //         callback(null);
-                //       }
-                //     } else {
-                //       if (_.isFunction(callback)) {
-                //         callback("ERROR: unknown");
-                //       }
-                //     }
-                //   }
-                // });
-              }
-            });
-      },
-
-      getLockStateOfPeripheral: function (options, peripheral, callback) {
-        console.log("getLockStateOfPeripheral called");
-        if (this._commandInProgress) {
-          callback("Other command still in progress");
-        } else {
-          this._commandInProgress = true;
-          var self = this;
-          this._onPeripheralDiscovered("getLockState", peripheral, function (err, result) {
-            self._commandInProgress = false;
-            if (err) {
-              if (_.isFunction(callback)) {
-                callback(err);
-              }
-            } else {
-              if (result) {
-                if (_.isFunction(callback)) {
-                  callback(null, result);
-                }
-              } else {
-                if (_.isFunction(callback)) {
-                  callback("ERROR: unknown");
+                  if (newStateAvail && !hasStateChange) {
+                    // lock no more signals new state avail
+                    clearTimeout(waitForBridgeReadTimeout);
+                    console.log("Reading lock state after bridge read it");
+                    currentlyReadingLockState = true;
+                    self._getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                      currentlyReadingLockState = false;
+                      callback(err, result);
+                    });
+                  }
+                  newStateAvail = hasStateChange;
                 }
               }
             }
-          });
-        }
+          }
+        });
       },
 
       lock: function (options, callback) {
@@ -773,23 +746,17 @@ _.extend(nukible.prototype, {
           var t = setTimeout(function () {
             console.log("Timeout. Aborting unlock.");
             noble.removeAllListeners('discover');
-            noble.removeAllListeners('stateChange');
             self._commandInProgress = false;
             if (_.isFunction(callback)) {
               callback("unlock timeout");
             }
           }, 30000);
-          if (noble.state === 'poweredOn') {
-            console.log("start scanning");
-            noble.startScanning();
-          }
           noble.on('discover',
               function (peripheral) {
                 var peripheralId = peripheral.uuid;
                 var lockPeripheralId = self.options.peripheralId;
                 if (lockPeripheralId === peripheralId) {
                   noble.removeAllListeners('discover');
-                  noble.removeAllListeners('stateChange');
                   self._onPeripheralDiscovered.call(self, "unlock", peripheral, function (err, result) {
                     self._commandInProgress = false;
                     clearTimeout(t);
