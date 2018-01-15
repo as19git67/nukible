@@ -31,100 +31,36 @@ _.extend(nukible.prototype, {
         });
       },
 
-      pair: function (options, callback) {
-        if (options) {
-          _.defaults(this.options, options);
-        }
-        this.isPaired = false;
-        this.isInPairing = true;
-        this.peripheralQueue = [];
-        this.knownPeripherals = [];
-        this.pairedPeripheralsId = Object.keys(options.nukiLocks);
-        var self = this;
-
-        function discontinue(err, results) {
-          clearInterval(i);
-          clearTimeout(t);
-
-          noble.removeAllListeners('discover');
-          noble.removeAllListeners('stateChange');
-
-          self.isInPairing = false;
-          delete self.peripheralInProgress;
-
-          if (_.isFunction(callback)) {
-            callback(err, results);
-          }
-        }
-
-        var i = setInterval(function () {
-          if (!self.peripheralInProgress && self.peripheralQueue.length > 0) {
-            self.peripheralInProgress = self.peripheralQueue.shift();
-            self.knownPeripherals.push(self.peripheralInProgress.id);
-            self._pairingOnPeripheralDiscovered.call(self, self.peripheralInProgress, function (err, result) {
-              if (err) {
-                self.isPaired = false;
-                discontinue(err);
-              } else {
-                if (result && result.status) {
-                  switch (result.status) {
-                  case 'notInPairingMode':
-                    console.log(self.peripheralInProgress.advertisement.localName +
-                                " is not in pairing mode. Ignoring it.");
-                    delete self.peripheralInProgress;
-                    break;
-                  case 'paired':
-                    self.isPaired = true;
-                    discontinue(null, result.results);
-                    break;
-                  case 'disconnected':
-                    if (self.isPaired || !self.isInPairing) {
-                      console.log("Peripheral disconnected.");
-                    } else {
-                      console.log("ERROR: peripheral disconnected during pairing.");
-                    }
-                    delete self.peripheralInProgress;
-                    break;
-                  default:
-                    discontinue("ERROR: pairing failed for unknown reason");
-                  }
-                }
-              }
-            });
-          }
-        }, 100);
-        var t = setTimeout(function () {
-          clearInterval(i);
-          console.log("Timeout. Aborting pairing.");
-          noble.removeAllListeners('discover');
-          noble.removeAllListeners('stateChange');
-          if (_.isFunction(callback)) {
-            self.isInPairing = false;
-            callback("pairing timeout");
-          }
-        }, 60000);
-        if (noble.state == 'poweredOn') {
-          noble.startScanning();
-        }
-        noble.on('discover', function (peripheral) {
-          if (_.contains(self.pairedPeripheralsId, peripheral.id)) {
-            console.log("Ignoring already paired peripheral " + peripheral.id);
-            return;
-          }
-          if (!peripheral.connectable) {
-            console.log("Ignoring not connectable peripheral " + peripheral.id);
-            return;
-          }
-          if (peripheral.advertisement.localName) { // Nuki locks have a name
-            if (!_.contains(self.knownPeripherals, peripheral.id)) {
-              console.log("Adding peripheral " + peripheral.advertisement.localName + " to try-to-pair queue");
-              self.peripheralQueue.push(peripheral);
-            }
-          }
-        });
+      stop: function () {
+        noble.stopScanning();
+        noble.removeAllListeners('stateChange');
       },
 
-      prepareEncryptedDataToSend: function (cmd, authorizationId, sharedSecret, payload) {
+      _startBleScan: function () {
+        noble.stopScanning();
+        var bleState = noble.state;
+        if (bleState === 'poweredOn') {
+          console.log('Scanning for nuki.io Bluetooth LE services...');
+          // only scan for devices advertising these service UUID's (default or empty array => any peripherals
+          var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
+
+          // allow duplicate peripheral to be returned (default false) on discovery event
+          var allowDuplicates = true;
+          noble.startScanning(serviceUuids, allowDuplicates);
+        } else {
+          console.log("Can't start scan, because bluetooth device is not powered on");
+        }
+      },
+
+      _onStateChanged: function (bleState) {
+        if (bleState === 'poweredOn') {
+          this._startBleScan();
+        } else {
+          noble.stopScanning();
+        }
+      },
+
+      _prepareEncryptedDataToSend: function (cmd, authorizationId, sharedSecret, payload) {
         var nonce = new Buffer(24);
         sodium.api.randombytes_buf(nonce);
 
@@ -152,6 +88,500 @@ _.extend(nukible.prototype, {
 
         return Buffer.concat([aData, pDataEncrypted]);
 
+      },
+
+      _onPeripheralDiscovered: function (command, peripheral, callback) {
+        var self = this;
+        var peripheralName = peripheral.advertisement.localName;
+
+        if (peripheral.connectable) {
+          peripheral.connect(function (err) {
+            if (err) {
+              callback(err);
+            } else {
+              console.log("connected to peripheral " + peripheralName);
+
+              peripheral.discoverServices(
+                  [nukible.prototype.nukiServiceUuid], function (err, services) {
+                    if (err) {
+                      peripheral.disconnect();
+                      callback(err);
+                    } else {
+
+                      self._onNukiServiceDiscovered.call(self, command, peripheral, services[0],
+                          function (err, result) {
+                            peripheral.disconnect();
+                            callback(err, result);
+                          })
+                    }
+                  });
+            }
+          });
+        } else {
+          callback(peripheralName + " is not connectable");
+        }
+      },
+
+      _onNukiServiceDiscovered: function (command, peripheral, nukiService, callback) {
+        var self = this;
+        this._currentCommand = command;
+        this.nukiUserSpecificDataInputOutputCharacteristic = null;
+        //
+        // This must be the service we were looking for.
+        //
+        console.log('found service:', nukiService.uuid);
+
+        //
+        // So, discover its characteristics.
+        //
+        nukiService.discoverCharacteristics([], function (err, characteristics) {
+
+          characteristics.forEach(function (characteristic) {
+            //
+            // Loop through each characteristic and match them to the
+            // UUIDs that we know about.
+            //
+            console.log('Found characteristic:', characteristic.uuid);
+
+            if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid === characteristic.uuid) {
+              self.nukiServiceGeneralDataIOCharacteristic = characteristic;
+            }
+            else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid === characteristic.uuid) {
+              self.nukiUserSpecificDataInputOutputCharacteristic = characteristic;
+            }
+          });
+
+          //
+          // Check to see if we found all of our characteristics.
+          //
+          if (self.nukiServiceGeneralDataIOCharacteristic &&
+              self.nukiUserSpecificDataInputOutputCharacteristic) {
+            console.log("All nuki.io characteristics that are needed were found.");
+
+            self.receivedData = new Buffer(0);
+
+            self.nukiUserSpecificDataInputOutputCharacteristic.subscribe(function () {
+              self.nukiUserSpecificDataInputOutputCharacteristic.on('read', function (data, isNotification) {
+                self._dataReceived.call(self, peripheral, data, isNotification, function (err, status) {
+                  if (err && _.isString(err)) {
+                    err += " State: " + self.state;
+                  }
+                  // status is set when overall action is finished
+                  // if !err && !status then further data is expected to be received
+                  if (err || status) {
+                    self.nukiUserSpecificDataInputOutputCharacteristic.removeListener.call(self, 'read',
+                        self._dataReceived);
+                    self.nukiUserSpecificDataInputOutputCharacteristic.unsubscribe();
+                    callback(err, status);
+                  }
+                });
+              });
+
+              var peripheralId = peripheral.uuid;
+              var lock = self.options.nukiLock;
+              if (lock) {
+                switch (self._currentCommand) {
+                case 'lock':
+                  self._initiateCmdLock.call(self, lock, callback);
+                  break;
+                case 'unlock':
+                  self._initiateCmdUnlock.call(self, lock, callback);
+                  break;
+                case 'getLockState':
+                  self._initiateCmdGetLockState.call(self, lock, callback);
+                  break;
+                default:
+                  callback("Command (" + self._currentCommand + ") not implemented");
+                  self._currentCommand = undefined;
+                }
+              } else {
+                callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
+              }
+
+            });
+          }
+        });
+      },
+
+      _initiateCmdLock: function (lockConfig, callback) {
+        var self = this;
+        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
+        this._requestNonceFromSL(lockConfig.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
+          if (err) {
+            callback(err);
+          } else {
+            var data1 = new Buffer(6);
+            data1.writeUInt8(2, 0); // 0x02 is lock
+            data1.writeUInt32LE(self.options.appId, 1);
+            data1.writeUInt8(0, 5); // no flags set
+            var wData = Buffer.concat([data1, nonceK]);
+            var wDataEncrypted = self._prepareEncryptedDataToSend(
+                nukible.prototype.CMD_LOCK_ACTION,
+                lockConfig.nukiAuthorizationId,
+                sharedSecret,
+                wData);
+
+            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+              if (err) {
+                console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
+                callback(err);
+              }
+            });
+          }
+        });
+      },
+
+      _initiateCmdUnlock: function (lockConfig, callback) {
+        var self = this;
+        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
+        this._requestNonceFromSL(lockConfig.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
+          if (err) {
+            callback(err);
+          } else {
+            var data1 = new Buffer(6);
+            data1.writeUInt8(1, 0); // 0x01 is unlock
+            data1.writeUInt32LE(self.options.appId, 1);
+            data1.writeUInt8(0, 5); // no flags set
+            var wData = Buffer.concat([data1, nonceK]);
+            var wDataEncrypted = self._prepareEncryptedDataToSend(
+                nukible.prototype.CMD_LOCK_ACTION,
+                lockConfig.nukiAuthorizationId,
+                sharedSecret,
+                wData);
+
+            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+              if (err) {
+                console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
+                callback(err);
+              }
+            });
+
+            //                                                callback(null, {status: 'unlocked'});
+          }
+        });
+      },
+
+      _initiateCmdGetLockState: function (lockConfig, callback) {
+        var self = this;
+        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
+
+        var data1 = new Buffer(2);
+        data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
+        var wDataEncrypted = self._prepareEncryptedDataToSend(
+            nukible.prototype.CMD_REQUEST_DATA,
+            lock.nukiAuthorizationId,
+            sharedSecret,
+            data1);
+
+        self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+          if (err) {
+            console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
+            callback(err);
+          }
+        });
+      },
+
+      _requestNonceFromSL: function (authorizationId, sharedSecret, callback) {
+        this.receivedData = new Buffer(0);
+        var wData = new Buffer(2);
+        wData.writeUInt16LE(nukible.prototype.CMD_CHALLENGE, 0); // request a challenge
+
+        var wDataEncrypted = this._prepareEncryptedDataToSend(
+            nukible.prototype.CMD_REQUEST_DATA,
+            authorizationId,
+            sharedSecret,
+            wData);
+
+        this.callbackForChallenge = callback;
+        var self = this;
+        // console.log("_requestNonceFromSL: encrypted data", wDataEncrypted);
+        this.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+          if (err) {
+            console.log("ERROR: failed to send encrypted message when requesting new challenge from SL");
+            self.callbackForChallenge = undefined;
+            callback(err);
+          }
+        });
+      },
+
+      _getTriggerStr: function (trigger) {
+        var triggerStr = "unknown";
+        switch (trigger) {
+        case 0:
+          triggerStr = "bluetooth";
+          break;
+        case 1:
+          triggerStr = "manual";
+          break;
+        case 2:
+          triggerStr = "button";
+          break;
+        }
+        return triggerStr;
+      },
+
+      _makeKeyBuffer: function (inKey) {
+        var keyAsBuffer = new Buffer(0);
+        if (_.isString(inKey)) {
+          keyAsBuffer = new Buffer(inKey, 'hex');
+        } else {
+          if (_.isArray(inKey)) {
+            keyAsBuffer = new Buffer(inKey);
+          }
+        }
+        return keyAsBuffer;
+      },
+
+      _prepareDataToSend: function (cmd, data) {
+        var cmdBuffer = new Buffer(2);
+        cmdBuffer.writeUInt16LE(cmd);
+        var responseData = Buffer.concat([cmdBuffer, data]);
+        var checksum = crc.crc16ccitt(responseData);
+        var checksumBuffer = new Buffer(2);
+        checksumBuffer.writeUInt16LE(checksum);
+        var dataToSend = Buffer.concat([responseData, checksumBuffer]);
+        return dataToSend;
+      },
+
+      _crcOk: function (dataTocheck) {
+        if (dataTocheck) {
+          var dataForCrc = dataTocheck.slice(0, dataTocheck.length - 2);
+          var crcSumCalc = crc.crc16ccitt(dataForCrc);
+          var crcSumRetrieved = dataTocheck.readUInt16LE(dataTocheck.length - 2);
+          return crcSumCalc === crcSumRetrieved;
+        } else {
+          console.log("CRC check failed. DataToCheck is null");
+          return false;
+        }
+      },
+
+      _parseNukiStates: function (payload) {
+        var nukiStates = {};
+        // console.log("NUKI STATES", payload, payload.length);
+        nukiStates.nukiState = payload.readUInt8(0);
+        nukiStates.nukiStateStr = "unknown";
+        switch (nukiStates.nukiState) {
+        case 0:
+          nukiStates.nukiStateStr = "uninitialized";
+          break;
+        case 1:
+          nukiStates.nukiStateStr = "pairing mode";
+          break;
+        case 2:
+          nukiStates.nukiStateStr = "door mode";
+          break;
+        }
+
+        nukiStates.lockState = payload.readUInt8(1);
+        nukiStates.lockStateStr = "unknown";
+        switch (nukiStates.lockState) {
+        case 0: // uncalibrated
+          nukiStates.lockStateStr = "uncalibrated";
+          break;
+        case 1: // locked
+          nukiStates.lockStateStr = "locked";
+          break;
+        case 2: // unlocking
+          nukiStates.lockStateStr = "unlocking";
+          break;
+        case 3: // unlocked
+          nukiStates.lockStateStr = "unlocked";
+          break;
+        case 4: // locking
+          nukiStates.lockStateStr = "locking";
+          break;
+        case 5: //unlatched
+          nukiStates.lockStateStr = "unlatched";
+          break;
+        case 6: // unlocked (lock'n'go)
+          nukiStates.lockStateStr = "unlocked - lock'n'go";
+          break;
+        case 7: // unlatching
+          nukiStates.lockStateStr = "unlatching";
+          break;
+        case 0xFE: // motor blocked
+          nukiStates.lockStateStr = "motor blocked";
+          break;
+        case 0xFF: // undefined
+          nukiStates.lockStateStr = "undefined";
+          break;
+        }
+
+        nukiStates.trigger = payload.readUInt8(2);
+        nukiStates.triggerStr = this._getTriggerStr(nukiStates.trigger);
+
+        var year = payload.readUInt16LE(3);
+        var month = payload.readUInt8(5);
+        var day = payload.readUInt8(6);
+        var hour = payload.readUInt8(7);
+        var minute = payload.readUInt8(8);
+        var second = payload.readUInt8(9);
+        var timeOffset = payload.readInt16LE(10);
+        var nukiTime = moment(
+            {year: year, month: month - 1, day: day, hour: hour, minute: minute, second: second});
+        nukiTime.utcOffset(timeOffset);
+
+        nukiStates.time = nukiTime;
+        nukiStates.timeOffset = timeOffset;
+
+        nukiStates.batteryCritical = payload.readUInt8(12) !== 0;
+        nukiStates.batteryCriticalStr = "ok";
+        if (nukiStates.batteryCritical) {
+          nukiStates.batteryCriticalStr = "critical";
+        }
+
+        nukiStates.configUpdateCount = payload.readUInt8(13);
+        nukiStates.lockNGoTimer = payload.readUInt8(14);
+
+        nukiStates.lastLockAction = payload.readUInt8(15);
+        nukiStates.lastLockActionStr = "unknown";
+        switch (nukiStates.lastLockAction) {
+        case 1:
+          nukiStates.lastLockActionStr = "unlock";
+          break;
+        case 2:
+          nukiStates.lastLockActionStr = "lock";
+          break;
+        case 3:
+          nukiStates.lastLockActionStr = "unlatch";
+          break;
+        case 4:
+          nukiStates.lastLockActionStr = "lock ‘n’ go";
+          break;
+        case 5:
+          nukiStates.lastLockActionStr = "lock ‘n’ go with unlatch";
+          break;
+        }
+
+        nukiStates.lastLockActionTrigger = payload.readUInt8(16);
+        nukiStates.lastLockActionTriggerStr = this._getTriggerStr(nukiStates.lastLockActionTrigger);
+
+        nukiStates.lastLockActionTriggerCompletionStatus = payload.readUInt8(17);
+
+        return nukiStates;
+      },
+
+      _dataReceived: function (peripheral, data, isNotification, callback) {
+        // console.log("DATA received", data);
+        var errorCode;
+        this.receivedData = Buffer.concat([this.receivedData, data]);
+
+        if (data.length < 20) {     // hack
+          var status;
+          if (this._currentCommand !== 'getLockState') {
+            var tmpCmdId = this.receivedData.readUInt16LE();
+            switch (tmpCmdId) {
+            case nukible.prototype.CMD_ERROR:
+              errorCode = this.receivedData.readUInt8(2);
+              var errorCodeStr = errorCode.toString();
+              switch (errorCode) {
+              case nukible.prototype.K_ERROR_BAD_PIN:
+                errorCodeStr = "K_ERROR_BAD_PIN";
+                break;
+              case nukible.prototype.K_ERROR_BAD_NONCE:
+                errorCodeStr = "K_ERROR_BAD_NONCE";
+                break;
+              case nukible.prototype.K_ERROR_BAD_PARAMETER:
+                errorCodeStr = "K_ERROR_BAD_PARAMETER";
+                break;
+              }
+              this.receivedData = new Buffer(0);
+              callback("ERROR reported from SL: " + errorCodeStr);
+              return;
+            case nukible.prototype.CMD_STATUS:
+              status = this.receivedData.readUInt8(2);
+              switch (status) {
+              case nukible.prototype.STATUS_ACCEPTED:
+                console.log("SL sent STATUS_ACCEPTED");
+                break;
+              case nukible.prototype.STATUS_COMPLETE:
+                console.log("SL sent STATUS_COMPLETE");
+                callback(null, {status: 'complete'});
+              }
+              this.receivedData = new Buffer(0);
+              return;
+            }
+          }
+          var nonceK = this.receivedData.slice(0, 24);
+          // var authorizationId = this.receivedData.readUInt32LE(24);
+          // var messageLen = this.receivedData.readUInt16LE(28);
+          var encryptedMessage = this.receivedData.slice(30);
+          var peripheralId = peripheral.uuid;
+          var lock = this.options.nukiLock;
+          if (lock) {
+            if (lock.sharedSecret) {
+              var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
+
+              var prefixBuff = new Buffer(16);
+              prefixBuff.fill(0);
+
+              var decryptedMessge = sodium.api.crypto_secretbox_open(Buffer.concat([prefixBuff, encryptedMessage]),
+                  nonceK,
+                  sharedSecret);
+
+              if (this._crcOk(decryptedMessge)) {
+                // console.log("CRC ok. Decrypted Message:", decryptedMessge);
+
+                var authorizationId = decryptedMessge.readUInt32LE(0);
+                if (authorizationId === lock.nukiAuthorizationId) {
+                  var cmdId = decryptedMessge.readUInt16LE(4);
+                  var payload = decryptedMessge.slice(6, decryptedMessge.length - 2);
+                  switch (cmdId) {
+                  case nukible.prototype.CMD_CHALLENGE:
+                    // console.log("CHALLENGE received:", payload, payload.length);
+                    if (this.callbackForChallenge) {
+                      this.callbackForChallenge(null, payload);
+                    }
+                    break;
+                  case nukible.prototype.CMD_NUKI_STATES:
+                    var nukiStates = this._parseNukiStates(payload);
+                    callback(null, {status: 'complete', states: nukiStates});
+                    break;
+                  case nukible.prototype.CMD_STATUS:
+                    status = payload.readUInt8(0);
+                    console.log("SL sent status " + status.toString(16));
+                    if (status === nukible.prototype.STATUS_COMPLETE) {
+                      console.log("calling callback with status complete");
+                      callback(null, {status: 'complete'});
+                    } else {
+                      if (status === nukible.prototype.STATUS_ACCEPTED) {
+                        console.log("SL sent status accepted");
+                      } else {
+                        callback("ERROR: SL sent STATUS not complete");
+                      }
+                    }
+                    break;
+                  case nukible.prototype.CMD_ERROR:
+                    errorCode = payload.readUInt8(0);
+                    var errorCommandId = payload.readUInt16LE(1);
+                    switch (errorCode) {
+                    case nukible.prototype.P_ERROR_NOT_PAIRING:
+                      //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                      callback(null, {status: 'notInPairingMode'});
+                      break;
+                    default:
+                      callback("ERROR from SL: " + errorCode.toString(16) + " for command " + errorCommandId.toString(16));
+                    }
+                    break;
+                  default:
+                    console.log("UNKNOWN message:", decryptedMessge);
+                    callback("ERROR: message received but not expected");
+                  }
+                } else {
+                  console.log("ignoring data for other authorization-id (" + authorizationId + ")");
+                }
+              } else {
+                callback("Wrong CRC.");
+              }
+            } else {
+              callback("ERROR: don't have sharedSecret for lock with uuid " + lock.nukiUuid);
+            }
+          } else {
+            callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
+          }
+
+          this.receivedData = new Buffer(0);
+        }
       },
 
       getLockState: function (options, callback) {
@@ -292,23 +722,18 @@ _.extend(nukible.prototype, {
           var t = setTimeout(function () {
             console.log("Timeout. Aborting lock.");
             noble.removeAllListeners('discover');
-            noble.removeAllListeners('stateChange');
             self._commandInProgress = false;
             if (_.isFunction(callback)) {
               callback("lock timeout");
             }
           }, 30000);
-          if (noble.state == 'poweredOn') {
-            console.log("start scanning");
-            noble.startScanning();
-          }
+
           noble.on('discover',
               function (peripheral) {
                 var peripheralId = peripheral.uuid;
                 var lockPeripheralId = self.options.peripheralId;
                 if (lockPeripheralId === peripheralId) {
                   noble.removeAllListeners('discover');
-                  noble.removeAllListeners('stateChange');
                   self._onPeripheralDiscovered.call(self, "lock", peripheral, function (err, result) {
                     self._commandInProgress = false;
                     clearTimeout(t);
@@ -389,6 +814,99 @@ _.extend(nukible.prototype, {
                 }
               });
         }
+      },
+
+      pair: function (options, callback) {
+        if (options) {
+          _.defaults(this.options, options);
+        }
+        this.isPaired = false;
+        this.isInPairing = true;
+        this.peripheralQueue = [];
+        this.knownPeripherals = [];
+        this.pairedPeripheralsId = Object.keys(options.nukiLocks);
+        var self = this;
+
+        function discontinue(err, results) {
+          clearInterval(i);
+          clearTimeout(t);
+
+          noble.removeAllListeners('discover');
+          noble.removeAllListeners('stateChange');
+
+          self.isInPairing = false;
+          delete self.peripheralInProgress;
+
+          if (_.isFunction(callback)) {
+            callback(err, results);
+          }
+        }
+
+        var i = setInterval(function () {
+          if (!self.peripheralInProgress && self.peripheralQueue.length > 0) {
+            self.peripheralInProgress = self.peripheralQueue.shift();
+            self.knownPeripherals.push(self.peripheralInProgress.id);
+            self._pairingOnPeripheralDiscovered.call(self, self.peripheralInProgress, function (err, result) {
+              if (err) {
+                self.isPaired = false;
+                discontinue(err);
+              } else {
+                if (result && result.status) {
+                  switch (result.status) {
+                  case 'notInPairingMode':
+                    console.log(self.peripheralInProgress.advertisement.localName +
+                                " is not in pairing mode. Ignoring it.");
+                    delete self.peripheralInProgress;
+                    break;
+                  case 'paired':
+                    self.isPaired = true;
+                    discontinue(null, result.results);
+                    break;
+                  case 'disconnected':
+                    if (self.isPaired || !self.isInPairing) {
+                      console.log("Peripheral disconnected.");
+                    } else {
+                      console.log("ERROR: peripheral disconnected during pairing.");
+                    }
+                    delete self.peripheralInProgress;
+                    break;
+                  default:
+                    discontinue("ERROR: pairing failed for unknown reason");
+                  }
+                }
+              }
+            });
+          }
+        }, 100);
+        var t = setTimeout(function () {
+          clearInterval(i);
+          console.log("Timeout. Aborting pairing.");
+          noble.removeAllListeners('discover');
+          noble.removeAllListeners('stateChange');
+          if (_.isFunction(callback)) {
+            self.isInPairing = false;
+            callback("pairing timeout");
+          }
+        }, 60000);
+        if (noble.state == 'poweredOn') {
+          noble.startScanning();
+        }
+        noble.on('discover', function (peripheral) {
+          if (_.contains(self.pairedPeripheralsId, peripheral.id)) {
+            console.log("Ignoring already paired peripheral " + peripheral.id);
+            return;
+          }
+          if (!peripheral.connectable) {
+            console.log("Ignoring not connectable peripheral " + peripheral.id);
+            return;
+          }
+          if (peripheral.advertisement.localName) { // Nuki locks have a name
+            if (!_.contains(self.knownPeripherals, peripheral.id)) {
+              console.log("Adding peripheral " + peripheral.advertisement.localName + " to try-to-pair queue");
+              self.peripheralQueue.push(peripheral);
+            }
+          }
+        });
       },
 
       _pairingOnPeripheralDiscovered: function (peripheral, callback) {
@@ -518,542 +1036,6 @@ _.extend(nukible.prototype, {
               }
             });
           });
-        }
-      },
-
-      _startBleScan: function () {
-        noble.stopScanning();
-        var bleState = noble.state;
-        if (bleState === 'poweredOn') {
-          console.log('Scanning for nuki.io Bluetooth LE services...');
-          // only scan for devices advertising these service UUID's (default or empty array => any peripherals
-          var serviceUuids = [/*nukible.prototype.nukiServiceUuid*/];
-
-          // allow duplicate peripheral to be returned (default false) on discovery event
-          var allowDuplicates = true;
-          noble.startScanning(serviceUuids, allowDuplicates);
-        } else {
-          console.log("Can't start scan, because bluetooth device is not powered on");
-        }
-      },
-
-      _onStateChanged: function (bleState) {
-        if (bleState === 'poweredOn') {
-          this._startBleScan();
-        } else {
-          noble.stopScanning();
-        }
-      },
-
-      _onPeripheralDiscovered: function (command, peripheral, callback) {
-        var self = this;
-        var peripheralName = peripheral.advertisement.localName;
-
-        if (peripheral.connectable) {
-          peripheral.connect(function (err) {
-            console.log("connected to peripheral " + peripheralName);
-
-            peripheral.discoverServices(
-                [nukible.prototype.nukiServiceUuid], function (err, services) {
-                  if (err) {
-                    callback(err);
-                  } else {
-
-                    self._onPeripheralServiceDiscovered.call(self, command, peripheral, services,
-                        function (err, result) {
-                          peripheral.disconnect();
-                          callback(err, result);
-                        })
-                  }
-                });
-
-          });
-        } else {
-          callback(peripheralName + " is not connectable");
-        }
-      },
-
-      _onPeripheralServiceDiscovered: function (command, peripheral, services, callback) {
-        var self = this;
-        this._currentCommand = command;
-        this.nukiGeneralDataIOCharacteristic = null;
-        this.nukiUserSpecificDataInputOutputCharacteristic = null;
-
-        services.forEach(function (service) {
-          //
-          // This must be the service we were looking for.
-          //
-          console.log('found service:', service.uuid);
-
-          //
-          // So, discover its characteristics.
-          //
-          service.discoverCharacteristics([], function (err, characteristics) {
-
-            characteristics.forEach(function (characteristic) {
-              //
-              // Loop through each characteristic and match them to the
-              // UUIDs that we know about.
-              //
-              console.log('Found characteristic:', characteristic.uuid);
-
-              if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid == characteristic.uuid) {
-                self.nukiServiceGeneralDataIOCharacteristic = characteristic;
-              }
-              else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid == characteristic.uuid) {
-                self.nukiUserSpecificDataInputOutputCharacteristic = characteristic;
-              }
-            });
-
-            //
-            // Check to see if we found all of our characteristics.
-            //
-            if (self.nukiServiceGeneralDataIOCharacteristic &&
-                self.nukiUserSpecificDataInputOutputCharacteristic) {
-              console.log("All nuki.io characteristics that are needed were found.");
-
-              self.receivedData = new Buffer(0);
-
-              self.nukiUserSpecificDataInputOutputCharacteristic.subscribe(function () {
-                self.nukiUserSpecificDataInputOutputCharacteristic.on('read', function (data, isNotification) {
-                  self._dataReceived.call(self, peripheral, data, isNotification, function (err, status) {
-                    if (err && _.isString(err)) {
-                      err += " State: " + self.state;
-                    }
-                    // status is set when overall action is finished
-                    // if !err && !status then further data is expected to be received
-                    if (err || status) {
-                      self.nukiUserSpecificDataInputOutputCharacteristic.removeListener.call(self, 'read',
-                          self._dataReceived);
-                      self.nukiUserSpecificDataInputOutputCharacteristic.unsubscribe();
-                      callback(err, status);
-                    }
-                  });
-                });
-
-                var peripheralId = peripheral.uuid;
-                var lock = self.options.nukiLock;
-                if (lock) {
-                  var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
-                  switch (self._currentCommand) {
-                  case 'lock':
-                    self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
-                      if (err) {
-                        peripheral.disconnect();
-                        callback(err);
-                      } else {
-
-                        // console.log("Nonce received from SL:", nonceK);
-                        var data1 = new Buffer(6);
-                        data1.writeUInt8(2, 0); // 0x02 is lock
-                        data1.writeUInt32LE(self.options.appId, 1);
-                        data1.writeUInt8(0, 5); // no flags set
-                        var wData = Buffer.concat([data1, nonceK]);
-                        var wDataEncrypted = self.prepareEncryptedDataToSend(
-                            nukible.prototype.CMD_LOCK_ACTION,
-                            lock.nukiAuthorizationId,
-                            sharedSecret,
-                            wData);
-
-                        self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                          if (err) {
-                            console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
-                            peripheral.disconnect();
-                            callback(err);
-                          }
-                        });
-
-                        //                                                callback(null, {status: 'unlocked'});
-                      }
-                    });
-                    break;
-                  case 'unlock':
-                    self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
-                      if (err) {
-                        peripheral.disconnect();
-                        callback(err);
-                      } else {
-
-                        // console.log("Nonce received from SL:", nonceK);
-                        var data1 = new Buffer(6);
-                        data1.writeUInt8(1, 0); // 0x01 is unlock
-                        data1.writeUInt32LE(self.options.appId, 1);
-                        data1.writeUInt8(0, 5); // no flags set
-                        var wData = Buffer.concat([data1, nonceK]);
-                        var wDataEncrypted = self.prepareEncryptedDataToSend(
-                            nukible.prototype.CMD_LOCK_ACTION,
-                            lock.nukiAuthorizationId,
-                            sharedSecret,
-                            wData);
-
-                        self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                          if (err) {
-                            console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
-                            peripheral.disconnect();
-                            callback(err);
-                          }
-                        });
-
-                        //                                                callback(null, {status: 'unlocked'});
-                      }
-                    });
-                    break;
-                  case 'getLockState':
-                    // console.log("Starting getLockState command");
-
-                    var data1 = new Buffer(2);
-                    data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
-                    var wDataEncrypted = self.prepareEncryptedDataToSend(
-                        nukible.prototype.CMD_REQUEST_DATA,
-                        lock.nukiAuthorizationId,
-                        sharedSecret,
-                        data1);
-
-                    self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                      if (err) {
-                        console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
-                        peripheral.disconnect();
-                        callback(err);
-                      }
-                    });
-                    // self._requestNonceFromSL(lock.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
-                    //       if (err) {
-                    //         peripheral.disconnect();
-                    //         callback(err);
-                    //       } else {
-                    //         // console.log("Nonce received from lock:", nonceK);
-                    //         var data1 = new Buffer(2);
-                    //         data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
-                    //         var wDataEncrypted = self.prepareEncryptedDataToSend(
-                    //             nukible.prototype.CMD_REQUEST_DATA,
-                    //             lock.nukiAuthorizationId,
-                    //             sharedSecret,
-                    //             data1);
-                    //
-                    //         self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-                    //           if (err) {
-                    //             console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
-                    //             peripheral.disconnect();
-                    //             callback(err);
-                    //           }
-                    //         });
-                    //       }
-                    //     }
-                    // );
-                    break;
-                  default:
-                    callback("Command (" + self._currentCommand + ") not implemented");
-                    self._currentCommand = undefined;
-                  }
-                } else {
-                  callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
-                }
-
-              });
-            }
-          });
-        });
-      },
-
-      _requestNonceFromSL: function (authorizationId, sharedSecret, callback) {
-        this.receivedData = new Buffer(0);
-        var wData = new Buffer(2);
-        wData.writeUInt16LE(nukible.prototype.CMD_CHALLENGE, 0); // request a challenge
-
-        var wDataEncrypted = this.prepareEncryptedDataToSend(
-            nukible.prototype.CMD_REQUEST_DATA,
-            authorizationId,
-            sharedSecret,
-            wData);
-
-        this.callbackForChallenge = callback;
-        var self = this;
-        // console.log("_requestNonceFromSL: encrypted data", wDataEncrypted);
-        this.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
-          if (err) {
-            console.log("ERROR: failed to send encrypted message when requesting new challenge from SL");
-            self.callbackForChallenge = undefined;
-            callback(err);
-          }
-        });
-      },
-
-      _getTriggerStr: function (trigger) {
-        var triggerStr = "unknown";
-        switch (trigger) {
-        case 0:
-          triggerStr = "bluetooth";
-          break;
-        case 1:
-          triggerStr = "manual";
-          break;
-        case 2:
-          triggerStr = "button";
-          break;
-        }
-        return triggerStr;
-      },
-
-      _dataReceived: function (peripheral, data, isNotification, callback) {
-        // console.log("DATA received", data);
-        this.receivedData = Buffer.concat([this.receivedData, data]);
-
-        if (data.length < 20) {     // hack
-          var status;
-          if (this._currentCommand !== 'getLockState') {
-            var tmpCmdId = this.receivedData.readUInt16LE();
-            switch (tmpCmdId) {
-            case nukible.prototype.CMD_ERROR:
-              var errorCode = this.receivedData.readUInt8(2);
-              var errorCodeStr = errorCode.toString();
-              switch (errorCode) {
-              case nukible.prototype.K_ERROR_BAD_PIN:
-                errorCodeStr = "K_ERROR_BAD_PIN";
-                break;
-              case nukible.prototype.K_ERROR_BAD_NONCE:
-                errorCodeStr = "K_ERROR_BAD_NONCE";
-                break;
-              case nukible.prototype.K_ERROR_BAD_PARAMETER:
-                errorCodeStr = "K_ERROR_BAD_PARAMETER";
-                break;
-              }
-              this.receivedData = new Buffer(0);
-              callback("ERROR reported from SL: " + errorCodeStr);
-              return;
-            case nukible.prototype.CMD_STATUS:
-              status = this.receivedData.readUInt8(2);
-              switch (status) {
-              case nukible.prototype.STATUS_ACCEPTED:
-                console.log("SL sent STATUS_ACCEPTED");
-                break;
-              case nukible.prototype.STATUS_COMPLETE:
-                console.log("SL sent STATUS_COMPLETE");
-                callback(null, {status: 'complete'});
-              }
-              this.receivedData = new Buffer(0);
-              return;
-            }
-          }
-          var nonceK = this.receivedData.slice(0, 24);
-          // var authorizationId = this.receivedData.readUInt32LE(24);
-          // var messageLen = this.receivedData.readUInt16LE(28);
-          var encryptedMessage = this.receivedData.slice(30);
-          var peripheralId = peripheral.uuid;
-          var lock = this.options.nukiLock;
-          if (lock) {
-            if (lock.sharedSecret) {
-              var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
-
-              var prefixBuff = new Buffer(16);
-              prefixBuff.fill(0);
-
-              var decryptedMessge = sodium.api.crypto_secretbox_open(Buffer.concat([prefixBuff, encryptedMessage]),
-                  nonceK,
-                  sharedSecret);
-
-              if (this._crcOk(decryptedMessge)) {
-                // console.log("CRC ok. Decrypted Message:", decryptedMessge);
-
-                var authorizationId = decryptedMessge.readUInt32LE(0);
-                if (authorizationId === lock.nukiAuthorizationId) {
-                  var cmdId = decryptedMessge.readUInt16LE(4);
-                  var payload = decryptedMessge.slice(6, decryptedMessge.length - 2);
-                  switch (cmdId) {
-                  case nukible.prototype.CMD_CHALLENGE:
-                    // console.log("CHALLENGE received:", payload, payload.length);
-                    if (this.callbackForChallenge) {
-                      this.callbackForChallenge(null, payload);
-                    }
-                    break;
-                  case nukible.prototype.CMD_NUKI_STATES:
-                    var nukiStates = this._parseNukiStates(payload);
-                    callback(null, {status: 'complete', states: nukiStates});
-                    break;
-                  case nukible.prototype.CMD_STATUS:
-                    status = payload.readUInt8(0);
-                    console.log("SL sent status " + status.toString(16));
-                    if (status === nukible.prototype.STATUS_COMPLETE) {
-                      console.log("calling callback with status complete");
-                      callback(null, {status: 'complete'});
-                    } else {
-                      if (status === nukible.prototype.STATUS_ACCEPTED) {
-                        console.log("SL sent status accepted");
-                      } else {
-                        callback("ERROR: SL sent STATUS not complete");
-                      }
-                    }
-                    break;
-                  case nukible.prototype.CMD_ERROR:
-                    var errorCode = payload.readUInt8(0);
-                    var errorCommandId = payload.readUInt16LE(1);
-                    switch (errorCode) {
-                    case nukible.prototype.P_ERROR_NOT_PAIRING:
-                      //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
-                      callback(null, {status: 'notInPairingMode'});
-                      break;
-                    default:
-                      callback("ERROR from SL: " + errorCode.toString(16) + " for command " + errorCommandId.toString(16));
-                    }
-                    break;
-                  default:
-                    console.log("UNKNOWN message:", decryptedMessge);
-                    callback("ERROR: message received but not expected");
-                  }
-                } else {
-                  console.log("ignoring data for other authorization-id (" + authorizationId + ")");
-                }
-              } else {
-                callback("Wrong CRC.");
-              }
-            } else {
-              callback("ERROR: don't have sharedSecret for lock with uuid " + lock.nukiUuid);
-            }
-          } else {
-            callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
-          }
-
-          this.receivedData = new Buffer(0);
-        }
-      },
-
-      _makeKeyBuffer: function (inKey) {
-        var keyAsBuffer = new Buffer(0);
-        if (_.isString(inKey)) {
-          keyAsBuffer = new Buffer(inKey, 'hex');
-        } else {
-          if (_.isArray(inKey)) {
-            keyAsBuffer = new Buffer(inKey);
-          }
-        }
-        return keyAsBuffer;
-      },
-
-      _parseNukiStates: function (payload) {
-        var nukiStates = {};
-        // console.log("NUKI STATES", payload, payload.length);
-        nukiStates.nukiState = payload.readUInt8(0);
-        nukiStates.nukiStateStr = "unknown";
-        switch (nukiStates.nukiState) {
-        case 0:
-          nukiStates.nukiStateStr = "uninitialized";
-          break;
-        case 1:
-          nukiStates.nukiStateStr = "pairing mode";
-          break;
-        case 2:
-          nukiStates.nukiStateStr = "door mode";
-          break;
-        }
-
-        nukiStates.lockState = payload.readUInt8(1);
-        nukiStates.lockStateStr = "unknown";
-        switch (nukiStates.lockState) {
-        case 0: // uncalibrated
-          nukiStates.lockStateStr = "uncalibrated";
-          break;
-        case 1: // locked
-          nukiStates.lockStateStr = "locked";
-          break;
-        case 2: // unlocking
-          nukiStates.lockStateStr = "unlocking";
-          break;
-        case 3: // unlocked
-          nukiStates.lockStateStr = "unlocked";
-          break;
-        case 4: // locking
-          nukiStates.lockStateStr = "locking";
-          break;
-        case 5: //unlatched
-          nukiStates.lockStateStr = "unlatched";
-          break;
-        case 6: // unlocked (lock'n'go)
-          nukiStates.lockStateStr = "unlocked - lock'n'go";
-          break;
-        case 7: // unlatching
-          nukiStates.lockStateStr = "unlatching";
-          break;
-        case 0xFE: // motor blocked
-          nukiStates.lockStateStr = "motor blocked";
-          break;
-        case 0xFF: // undefined
-          nukiStates.lockStateStr = "undefined";
-          break;
-        }
-
-        nukiStates.trigger = payload.readUInt8(2);
-        nukiStates.triggerStr = this._getTriggerStr(nukiStates.trigger);
-
-        var year = payload.readUInt16LE(3);
-        var month = payload.readUInt8(5);
-        var day = payload.readUInt8(6);
-        var hour = payload.readUInt8(7);
-        var minute = payload.readUInt8(8);
-        var second = payload.readUInt8(9);
-        var timeOffset = payload.readInt16LE(10);
-        var nukiTime = moment(
-            {year: year, month: month - 1, day: day, hour: hour, minute: minute, second: second});
-        nukiTime.utcOffset(timeOffset);
-
-        nukiStates.time = nukiTime;
-        nukiStates.timeOffset = timeOffset;
-
-        nukiStates.batteryCritical = payload.readUInt8(12) !== 0;
-        nukiStates.batteryCriticalStr = "ok";
-        if (nukiStates.batteryCritical) {
-          nukiStates.batteryCriticalStr = "critical";
-        }
-
-        nukiStates.configUpdateCount = payload.readUInt8(13);
-        nukiStates.lockNGoTimer = payload.readUInt8(14);
-
-        nukiStates.lastLockAction = payload.readUInt8(15);
-        nukiStates.lastLockActionStr = "unknown";
-        switch (nukiStates.lastLockAction) {
-        case 1:
-          nukiStates.lastLockActionStr = "unlock";
-          break;
-        case 2:
-          nukiStates.lastLockActionStr = "lock";
-          break;
-        case 3:
-          nukiStates.lastLockActionStr = "unlatch";
-          break;
-        case 4:
-          nukiStates.lastLockActionStr = "lock ‘n’ go";
-          break;
-        case 5:
-          nukiStates.lastLockActionStr = "lock ‘n’ go with unlatch";
-          break;
-        }
-
-        nukiStates.lastLockActionTrigger = payload.readUInt8(16);
-        nukiStates.lastLockActionTriggerStr = this._getTriggerStr(nukiStates.lastLockActionTrigger);
-
-        nukiStates.lastLockActionTriggerCompletionStatus = payload.readUInt8(17);
-
-        return nukiStates;
-      },
-
-      _prepareDataToSend: function (cmd, data) {
-        var cmdBuffer = new Buffer(2);
-        cmdBuffer.writeUInt16LE(cmd);
-        var responseData = Buffer.concat([cmdBuffer, data]);
-        var checksum = crc.crc16ccitt(responseData);
-        var checksumBuffer = new Buffer(2);
-        checksumBuffer.writeUInt16LE(checksum);
-        var dataToSend = Buffer.concat([responseData, checksumBuffer]);
-        return dataToSend;
-      },
-
-      _crcOk: function (dataTocheck) {
-        if (dataTocheck) {
-          var dataForCrc = dataTocheck.slice(0, dataTocheck.length - 2);
-          var crcSumCalc = crc.crc16ccitt(dataForCrc);
-          var crcSumRetrieved = dataTocheck.readUInt16LE(dataTocheck.length - 2);
-          return crcSumCalc === crcSumRetrieved;
-        } else {
-          console.log("CRC check failed. DataToCheck is null");
-          return false;
         }
       },
 
