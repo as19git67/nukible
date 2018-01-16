@@ -46,7 +46,22 @@ _.extend(nukible.prototype, {
 
           // allow duplicate peripheral to be returned (default false) on discovery event
           var allowDuplicates = true;
-          noble.startScanning(serviceUuids, allowDuplicates);
+          noble.startScanning(serviceUuids, allowDuplicates, function (err) {
+            if (err) {
+              console.log("startScanning error: " + err);
+            }
+          });
+
+          noble.on('scanStop', function () {
+            setTimeout(function () {
+              noble.startScanning(serviceUuids, allowDuplicates, function (err) {
+                if (err) {
+                  console.log("startScanning error: " + err);
+                }
+              });
+            }, 2500);
+          });
+
         } else {
           console.log("Can't start scan, because bluetooth device is not powered on");
         }
@@ -265,7 +280,7 @@ _.extend(nukible.prototype, {
         data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
         var wDataEncrypted = self._prepareEncryptedDataToSend(
             nukible.prototype.CMD_REQUEST_DATA,
-            lock.nukiAuthorizationId,
+            lockConfig.nukiAuthorizationId,
             sharedSecret,
             data1);
 
