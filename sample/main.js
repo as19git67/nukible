@@ -66,7 +66,9 @@ function handleKeyboard() {
     if (isPaired()) {
       console.log("l: lock");
       console.log("u: unlock");
-      console.log("s: scan");
+      console.log("i: get nuki states");
+      console.log("n: scan for nuki state change and get info if changed");
+      console.log("s: stop scan for nuki state changes and allow other commands again")
     } else {
       console.log("p: pair");
     }
@@ -80,7 +82,7 @@ function handleKeyboard() {
         process.stdin.pause();
         process.exit();
       } else {
-        if (allowCommands) {
+        if (allowCommands || key.name === 'q' || key.name === 's') {
           switch (key.name) {
           case 'p':
             if (!isPaired()) {
@@ -92,7 +94,7 @@ function handleKeyboard() {
               });
             }
             break;
-          case 's':
+          case 'n':
             if (isPaired()) {
               allowCommands = false;
               options = {
@@ -102,16 +104,25 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
+              console.log("Start scanning for nuki state changes...");
               nuki.scanForLockStateChanges(options, function (err, data) {
                 if (err) {
                   console.log("ERROR: scanning for nuki lock state change failed", err);
                   allowCommands = true;
                   showUsage();
                 } else {
-                  console.log("got lock states.", data);
+                  console.log("Got nuki states: ", data);
                 }
               });
             }
+            break;
+          case 's':
+            if (!allowCommands) {
+              console.log("Stopping scan for nuki state changes...");
+              nuki.stopScanForLockStateChanges();
+              allowCommands = true;
+            }
+            showUsage();
             break;
           case 'i':
             if (isPaired()) {
@@ -123,9 +134,10 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
-              nuki.getLockState(options, function (err, data) {
+              console.log("Getting nuki states...");
+              nuki.getNukiStates(options, function (err, data) {
                 if (err) {
-                  console.log("ERROR: getLockState failed", err);
+                  console.log("ERROR: getNukiStates failed", err);
                 } else {
                   console.log(data);
                 }
@@ -144,6 +156,7 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
+              console.log("Locking...");
               nuki.lock(options, function (err) {
                 if (err) {
                   console.log("ERROR: locking the door failed", err);
@@ -165,6 +178,7 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
+              console.log("Unlocking...");
               nuki.unlock(options, function (err) {
                 if (err) {
                   console.log("ERROR: unlocking the door failed", err);

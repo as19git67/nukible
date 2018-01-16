@@ -183,7 +183,7 @@ _.extend(nukible.prototype, {
                 case 'unlock':
                   self._initiateCmdUnlock.call(self, lock, callback);
                   break;
-                case 'getLockState':
+                case 'getNukiStates':
                   self._initiateCmdGetLockState.call(self, lock, callback);
                   break;
                 default:
@@ -457,14 +457,14 @@ _.extend(nukible.prototype, {
         return nukiStates;
       },
 
-      _getLockStateOfPeripheral: function (options, peripheral, callback) {
-        // console.log("_getLockStateOfPeripheral called");
+      _getNukiStates: function (options, peripheral, callback) {
+        // console.log("_getNukiStates called");
         if (this._commandInProgress) {
           callback("Other command still in progress");
         } else {
           this._commandInProgress = true;
           var self = this;
-          this._onPeripheralDiscovered("getLockState", peripheral, function (err, result) {
+          this._onPeripheralDiscovered("getNukiStates", peripheral, function (err, result) {
             self._commandInProgress = false;
             if (err) {
               if (_.isFunction(callback)) {
@@ -492,7 +492,7 @@ _.extend(nukible.prototype, {
 
         if (data.length < 20) {     // hack
           var status;
-          if (this._currentCommand !== 'getLockState') {
+          if (this._currentCommand !== 'getNukiStates') {
             var tmpCmdId = this.receivedData.readUInt16LE();
             switch (tmpCmdId) {
             case nukible.prototype.CMD_ERROR:
@@ -608,7 +608,7 @@ _.extend(nukible.prototype, {
         }
       },
 
-      getLockState: function (options, callback) {
+      getNukiStates: function (options, callback) {
         if (options) {
           _.defaults(this.options, options);
         }
@@ -618,7 +618,7 @@ _.extend(nukible.prototype, {
           var peripheralId = peripheral.uuid;
           var lockPeripheralId = self.options.peripheralId;
           if (lockPeripheralId === peripheralId) {
-            self._getLockStateOfPeripheral.call(self, options, peripheral, callback);
+            self._getNukiStates.call(self, options, peripheral, callback);
           }
         });
       },
@@ -657,7 +657,7 @@ _.extend(nukible.prototype, {
                       if (!currentlyReadingLockState) {
                         console.log("WARNING: reading lock state after bridge did not read it for 10 seconds");
                         currentlyReadingLockState = true;
-                        self._getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                        self._getNukiStates.call(self, options, peripheral, function (err, result) {
                           currentlyReadingLockState = false;
                           callback(err, result);
                         });
@@ -669,7 +669,7 @@ _.extend(nukible.prototype, {
                     clearTimeout(waitForBridgeReadTimeout);
                     console.log("Reading lock state after bridge read it");
                     currentlyReadingLockState = true;
-                    self._getLockStateOfPeripheral.call(self, options, peripheral, function (err, result) {
+                    self._getNukiStates.call(self, options, peripheral, function (err, result) {
                       currentlyReadingLockState = false;
                       callback(err, result);
                     });
@@ -680,6 +680,10 @@ _.extend(nukible.prototype, {
             }
           }
         });
+      },
+
+      stopScanForLockStateChanges: function () {
+        noble.removeAllListeners('discover');
       },
 
       lock: function (options, callback) {
