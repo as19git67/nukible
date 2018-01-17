@@ -108,8 +108,17 @@ _.extend(nukible.prototype, {
       _onPeripheralDiscovered: function (command, peripheral, callback) {
         var self = this;
         var peripheralName = peripheral.advertisement.localName;
+        var completed = false;
 
         if (peripheral.connectable) {
+          peripheral.on('disconnect', function() {
+            if (!completed){
+              callback("Peripheral disconnected during command execution.");
+            } else {
+              console.log("Peripheral disconnected");
+            }
+          });
+
           peripheral.connect(function (err) {
             if (err) {
               callback(err);
@@ -122,8 +131,8 @@ _.extend(nukible.prototype, {
                   callback(err);
                 } else {
 
-                  self._onNukiServiceDiscovered.call(self, command, peripheral, services[0],
-                      function (err, result) {
+                  self._onNukiServiceDiscovered.call(self, command, peripheral, services[0], function (err, result) {
+                        completed = true;
                         peripheral.disconnect();
                         callback(err, result);
                       })
@@ -677,7 +686,10 @@ _.extend(nukible.prototype, {
                     // if a Nuki bridge is installed and paired with the Nuki keyturner, the bridge will detect the
                     // state change too and will read the state change. Give it a chance to read the states before
                     // this program does it too
-                    if (self.options.bridgeReadsFirst) {
+                    if (options.bridgeReadsFirst){
+                      console.log("Bridge reads first");
+                    }
+                    if (options.bridgeReadsFirst) {
                       var timeoutInSeconds = 30;
                       waitForBridgeReadTimeout = setTimeout(function () {
                         if (!currentlyReadingLockState) {
@@ -702,7 +714,7 @@ _.extend(nukible.prototype, {
                     }
                   }
 
-                  if (!currentlyReadingLockState && self.options.bridgeReadsFirst && newStateAvail && !hasStateChange) {
+                  if (!currentlyReadingLockState && options.bridgeReadsFirst && newStateAvail && !hasStateChange) {
                     // lock no more signals new state avail
                     clearTimeout(waitForBridgeReadTimeout);
                     console.log("Reading lock state after bridge read it");
