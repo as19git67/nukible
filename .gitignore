@@ -48,3 +48,5 @@ fabric.properties
 .gitignore
 .idea/
 node_modules/
+sample/config.json
+
