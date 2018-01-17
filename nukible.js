@@ -114,22 +114,21 @@ _.extend(nukible.prototype, {
             if (err) {
               callback(err);
             } else {
-              console.log("connected to peripheral " + peripheralName);
+              console.log("Connected to peripheral " + peripheralName);
 
-              peripheral.discoverServices(
-                  [nukible.prototype.nukiServiceUuid], function (err, services) {
-                    if (err) {
-                      peripheral.disconnect();
-                      callback(err);
-                    } else {
+              peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
+                if (err) {
+                  peripheral.disconnect();
+                  callback(err);
+                } else {
 
-                      self._onNukiServiceDiscovered.call(self, command, peripheral, services[0],
-                          function (err, result) {
-                            peripheral.disconnect();
-                            callback(err, result);
-                          })
-                    }
-                  });
+                  self._onNukiServiceDiscovered.call(self, command, peripheral, services[0],
+                      function (err, result) {
+                        peripheral.disconnect();
+                        callback(err, result);
+                      })
+                }
+              });
             }
           });
         } else {
@@ -140,11 +139,9 @@ _.extend(nukible.prototype, {
       _onNukiServiceDiscovered: function (command, peripheral, nukiService, callback) {
         var self = this;
         this._currentCommand = command;
-        this.nukiUserSpecificDataInputOutputCharacteristic = null;
+        this.nukiUSDIOCharacteristic = null;
 
-        //
-        // So, discover its characteristics.
-        //
+        // discover its characteristics.
         nukiService.discoverCharacteristics([], function (err, characteristics) {
 
           characteristics.forEach(function (characteristic) {
@@ -152,13 +149,13 @@ _.extend(nukible.prototype, {
             // Loop through each characteristic and match them to the
             // UUIDs that we know about.
             //
-            console.log('Found characteristic:', characteristic.uuid);
+            // console.log('found characteristic:', characteristic.uuid);
 
             if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid === characteristic.uuid) {
               self.nukiServiceGeneralDataIOCharacteristic = characteristic;
             }
             else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid === characteristic.uuid) {
-              self.nukiUserSpecificDataInputOutputCharacteristic = characteristic;
+              self.nukiUSDIOCharacteristic = characteristic;
             }
           });
 
@@ -166,23 +163,31 @@ _.extend(nukible.prototype, {
           // Check to see if we found all of our characteristics.
           //
           if (self.nukiServiceGeneralDataIOCharacteristic &&
-              self.nukiUserSpecificDataInputOutputCharacteristic) {
+              self.nukiUSDIOCharacteristic) {
             console.log("All nuki.io characteristics that are needed were found.");
 
             self.receivedData = new Buffer(0);
 
-            self.nukiUserSpecificDataInputOutputCharacteristic.subscribe(function () {
-              self.nukiUserSpecificDataInputOutputCharacteristic.on('read', function (data, isNotification) {
+            // install a timeout function to finish the command with an error if no data was received from the nuki
+            // keyturner to complete the command
+            var dataReceiveTimeout = setTimeout(function () {
+              callback("Timeout while waiting for completing the command " + command);
+            }, 10000);
+
+            self.nukiUSDIOCharacteristic.subscribe(function () {
+              self.nukiUSDIOCharacteristic.on('read', function (data, isNotification) {
                 self._dataReceived.call(self, peripheral, data, isNotification, function (err, status) {
+
+                  clearTimeout(dataReceiveTimeout);
+
                   if (err && _.isString(err)) {
                     err += " State: " + self.state;
                   }
                   // status is set when overall action is finished
                   // if !err && !status then further data is expected to be received
                   if (err || status) {
-                    self.nukiUserSpecificDataInputOutputCharacteristic.removeListener.call(self, 'read',
-                        self._dataReceived);
-                    self.nukiUserSpecificDataInputOutputCharacteristic.unsubscribe();
+                    self.nukiUSDIOCharacteristic.removeListener.call(self, 'read', self._dataReceived);
+                    self.nukiUSDIOCharacteristic.unsubscribe();
                     callback(err, status);
                   }
                 });
@@ -232,7 +237,7 @@ _.extend(nukible.prototype, {
                 sharedSecret,
                 wData);
 
-            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+            self.nukiUSDIOCharacteristic.write(wDataEncrypted, false, function (err) {
               if (err) {
                 console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
                 callback(err);
@@ -260,7 +265,7 @@ _.extend(nukible.prototype, {
                 sharedSecret,
                 wData);
 
-            self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+            self.nukiUSDIOCharacteristic.write(wDataEncrypted, false, function (err) {
               if (err) {
                 console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
                 callback(err);
@@ -284,7 +289,7 @@ _.extend(nukible.prototype, {
             sharedSecret,
             data1);
 
-        self.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+        self.nukiUSDIOCharacteristic.write(wDataEncrypted, false, function (err) {
           if (err) {
             console.log("ERROR: failed to send encrypted message for CMD_NUKI_STATES");
             callback(err);
@@ -306,7 +311,7 @@ _.extend(nukible.prototype, {
         this.callbackForChallenge = callback;
         var self = this;
         // console.log("_requestNonceFromSL: encrypted data", wDataEncrypted);
-        this.nukiUserSpecificDataInputOutputCharacteristic.write(wDataEncrypted, false, function (err) {
+        this.nukiUSDIOCharacteristic.write(wDataEncrypted, false, function (err) {
           if (err) {
             console.log("ERROR: failed to send encrypted message when requesting new challenge from SL");
             self.callbackForChallenge = undefined;
@@ -646,6 +651,7 @@ _.extend(nukible.prototype, {
 
         var newStateAvail = false;
         var waitForBridgeReadTimeout;
+        var currentlyReadingLockState = false;
 
         var previousStateBuffer = new Buffer(0);
         noble.on('discover', function (peripheral) {
@@ -658,7 +664,6 @@ _.extend(nukible.prototype, {
               if (serviceUUidStr === nukible.prototype.nukiServiceUuid) {
                 var stateBuffer = peripheral.advertisement.manufacturerData.slice(4 + 16);
                 if (!previousStateBuffer.equals(stateBuffer)) {
-                  var currentlyReadingLockState = false;
                   console.log("Peripheral: " + peripheral.id + " with rssi " + peripheral.rssi + " has state: " +
                               stateBuffer.toString('hex'));
                   previousStateBuffer = stateBuffer;
@@ -667,19 +672,37 @@ _.extend(nukible.prototype, {
                   var hasStateChange = (byte5 & 0x1) !== 0;
 
                   if (!newStateAvail && hasStateChange) {
-                    // lock has signalled new state avail
-                    waitForBridgeReadTimeout = setTimeout(function () {
-                      if (!currentlyReadingLockState) {
-                        console.log("WARNING: reading lock state after bridge did not read it for 10 seconds");
-                        currentlyReadingLockState = true;
-                        self._getNukiStates.call(self, options, peripheral, function (err, result) {
-                          currentlyReadingLockState = false;
-                          callback(err, result);
-                        });
-                      }
-                    }, 10000);
+                    // lock has signalled new state available
+
+                    // if a Nuki bridge is installed and paired with the Nuki keyturner, the bridge will detect the
+                    // state change too and will read the state change. Give it a chance to read the states before
+                    // this program does it too
+                    if (self.options.bridgeReadsFirst) {
+                      var timeoutInSeconds = 30;
+                      waitForBridgeReadTimeout = setTimeout(function () {
+                        if (!currentlyReadingLockState) {
+                          console.log("WARNING: reading lock state after bridge did not read it for " +
+                                      timeoutInSeconds +
+                                      " seconds");
+                          currentlyReadingLockState = true;
+                          self._getNukiStates.call(self, options, peripheral, function (err, result) {
+                            currentlyReadingLockState = false;
+                            callback(err, result);
+                          });
+                        }
+                      }, timeoutInSeconds * 1000);
+                    }
+                  } else {
+                    if (!currentlyReadingLockState) {
+                      currentlyReadingLockState = true;
+                      self._getNukiStates.call(self, options, peripheral, function (err, result) {
+                        currentlyReadingLockState = false;
+                        callback(err, result);
+                      });
+                    }
                   }
-                  if (newStateAvail && !hasStateChange) {
+
+                  if (!currentlyReadingLockState && self.options.bridgeReadsFirst && newStateAvail && !hasStateChange) {
                     // lock no more signals new state avail
                     clearTimeout(waitForBridgeReadTimeout);
                     console.log("Reading lock state after bridge read it");
@@ -947,7 +970,7 @@ _.extend(nukible.prototype, {
           var self = this;
           this.nukiPairingGeneralDataIOCharacteristic = null;
           this.nukiServiceGeneralDataIOCharacteristic = null;
-          this.nukiUserSpecificDataInputOutputCharacteristic = null;
+          this.nukiUSDIOCharacteristic = null;
 
           services.forEach(function (service) {
             //
@@ -965,7 +988,7 @@ _.extend(nukible.prototype, {
                 // Loop through each characteristic and match them to the
                 // UUIDs that we know about.
                 //
-                console.log('Found characteristic:', characteristic.uuid);
+                console.log('found characteristic:', characteristic.uuid);
 
                 if (nukible.prototype.nukiPairingGeneralDataIOCharacteristicUuid == characteristic.uuid) {
                   self.nukiPairingGeneralDataIOCharacteristic = characteristic;
@@ -974,7 +997,7 @@ _.extend(nukible.prototype, {
                   self.nukiServiceGeneralDataIOCharacteristic = characteristic;
                 }
                 else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid == characteristic.uuid) {
-                  self.nukiUserSpecificDataInputOutputCharacteristic = characteristic;
+                  self.nukiUSDIOCharacteristic = characteristic;
                 }
               });
 
@@ -983,7 +1006,7 @@ _.extend(nukible.prototype, {
               //
               if (self.nukiPairingGeneralDataIOCharacteristic &&
                   self.nukiServiceGeneralDataIOCharacteristic &&
-                  self.nukiUserSpecificDataInputOutputCharacteristic) {
+                  self.nukiUSDIOCharacteristic) {
                 console.log("All nuki.io characteristics that are needed for pairing were found.");
 
                 self.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY;

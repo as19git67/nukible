@@ -104,6 +104,7 @@ function handleKeyboard() {
                 nukiLock: firstLock,
                 peripheralId: peripheralId
               };
+              options.bridgeReadsFirst = true;  // set to false if you don't have a nuki bridge
               console.log("Start scanning for nuki state changes...");
               nuki.scanForLockStateChanges(options, function (err, data) {
                 if (err) {
