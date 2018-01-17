@@ -686,9 +686,6 @@ _.extend(nukible.prototype, {
                     // if a Nuki bridge is installed and paired with the Nuki keyturner, the bridge will detect the
                     // state change too and will read the state change. Give it a chance to read the states before
                     // this program does it too
-                    if (options.bridgeReadsFirst){
-                      console.log("Bridge reads first");
-                    }
                     if (options.bridgeReadsFirst) {
                       var timeoutInSeconds = 30;
                       waitForBridgeReadTimeout = setTimeout(function () {
@@ -703,18 +700,19 @@ _.extend(nukible.prototype, {
                           });
                         }
                       }, timeoutInSeconds * 1000);
-                    }
-                  } else {
-                    if (!currentlyReadingLockState) {
-                      currentlyReadingLockState = true;
-                      self._getNukiStates.call(self, options, peripheral, function (err, result) {
-                        currentlyReadingLockState = false;
-                        callback(err, result);
-                      });
+
+                    } else {
+                      if (!currentlyReadingLockState) {
+                        currentlyReadingLockState = true;
+                        self._getNukiStates.call(self, options, peripheral, function (err, result) {
+                          currentlyReadingLockState = false;
+                          callback(err, result);
+                        });
+                      }
                     }
                   }
 
-                  if (!currentlyReadingLockState && options.bridgeReadsFirst && newStateAvail && !hasStateChange) {
+                  if (!currentlyReadingLockState && (options.bridgeReadsFirst && newStateAvail && !hasStateChange)) {
                     // lock no more signals new state avail
                     clearTimeout(waitForBridgeReadTimeout);
                     console.log("Reading lock state after bridge read it");
