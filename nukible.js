@@ -111,8 +111,9 @@ _.extend(nukible.prototype, {
         var completed = false;
 
         if (peripheral.connectable) {
-          peripheral.on('disconnect', function() {
-            if (!completed){
+          peripheral.on('disconnect', function () {
+            if (!completed) {
+              peripheral.removeAllListeners('disconnect');
               callback("Peripheral disconnected during command execution.");
             } else {
               console.log("Peripheral disconnected");
@@ -121,21 +122,24 @@ _.extend(nukible.prototype, {
 
           peripheral.connect(function (err) {
             if (err) {
+              peripheral.removeAllListeners('disconnect');
               callback(err);
             } else {
               console.log("Connected to peripheral " + peripheralName);
 
               peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
                 if (err) {
+                  peripheral.removeAllListeners('disconnect');
                   peripheral.disconnect();
                   callback(err);
                 } else {
 
                   self._onNukiServiceDiscovered.call(self, command, peripheral, services[0], function (err, result) {
-                        completed = true;
-                        peripheral.disconnect();
-                        callback(err, result);
-                      })
+                    completed = true;
+                    peripheral.removeAllListeners('disconnect');
+                    peripheral.disconnect();
+                    callback(err, result);
+                  })
                 }
               });
             }
