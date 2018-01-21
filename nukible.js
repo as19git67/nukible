@@ -122,6 +122,7 @@ _.extend(nukible.prototype, {
 
           peripheral.connect(function (err) {
             if (err) {
+              completed = true;
               peripheral.removeAllListeners('disconnect');
               callback(err);
             } else {
@@ -129,6 +130,7 @@ _.extend(nukible.prototype, {
 
               peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
                 if (err) {
+                  completed = true;
                   peripheral.removeAllListeners('disconnect');
                   peripheral.disconnect();
                   callback(err);
@@ -580,6 +582,9 @@ _.extend(nukible.prototype, {
                 // console.log("CRC ok. Decrypted Message:", decryptedMessge);
 
                 var authorizationId = decryptedMessge.readUInt32LE(0);
+                if (_.isString(lock.nukiAuthorizationId)) {
+                  lock.nukiAuthorizationId = parseInt(lock.nukiAuthorizationId);
+                }
                 if (authorizationId === lock.nukiAuthorizationId) {
                   var cmdId = decryptedMessge.readUInt16LE(4);
                   var payload = decryptedMessge.slice(6, decryptedMessge.length - 2);
