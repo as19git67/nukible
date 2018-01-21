@@ -500,8 +500,17 @@ _.extend(nukible.prototype, {
         } else {
           this._commandInProgress = true;
           var self = this;
+          var hadTimeout = false;
+          var commandTimeout = setTimeout(function () {
+            hadTimeout = true;
+            callback("Timeout in getNukiStates command");
+          }, 13000);
           this._onPeripheralDiscovered("getNukiStates", peripheral, function (err, result) {
             self._commandInProgress = false;
+            if (hadTimeout) {
+              return; // ignore result, because timeout was already signalled
+            }
+            clearTimeout(commandTimeout);
             if (err) {
               if (_.isFunction(callback)) {
                 callback(err);
@@ -697,7 +706,7 @@ _.extend(nukible.prototype, {
                     // state change too and will read the state change. Give it a chance to read the states before
                     // this program does it too
                     if (options.bridgeReadsFirst) {
-                      var timeoutInSeconds = 30;
+                      var timeoutInSeconds = 65;
                       waitForBridgeReadTimeout = setTimeout(function () {
                         if (!currentlyReadingLockState) {
                           console.log("WARNING: reading lock state after bridge did not read it for " +
