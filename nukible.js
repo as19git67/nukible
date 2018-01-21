@@ -700,8 +700,12 @@ _.extend(nukible.prototype, {
                   // console.log("byte4: " + byte5.toString(16));
                   var hasStateChange = (byte5 & 0x1) !== 0;
 
+                  console.log("newStateAvail: " + newStateAvail + ", hasStateChange: " + hasStateChange +
+                              ", currentlyReadingLockState: " + currentlyReadingLockState);
+
                   if (!newStateAvail && hasStateChange) {
                     // lock has signalled new state available
+                    console.log("nuki lock has signalled new state is available");
 
                     // if a Nuki bridge is installed and paired with the Nuki keyturner, the bridge will detect the
                     // state change too and will read the state change. Give it a chance to read the states before
@@ -724,23 +728,29 @@ _.extend(nukible.prototype, {
                     } else {
                       if (!currentlyReadingLockState) {
                         currentlyReadingLockState = true;
-                        self._getNukiStates.call(self, options, peripheral, function (err, result) {
-                          currentlyReadingLockState = false;
-                          callback(err, result);
-                        });
+                        setTimeout(function () {
+                          self._getNukiStates.call(self, options, peripheral, function (err, result) {
+                            currentlyReadingLockState = false;
+                            callback(err, result);
+                          });
+                        }, 5000);
                       }
                     }
                   }
 
                   if (!currentlyReadingLockState && (options.bridgeReadsFirst && newStateAvail && !hasStateChange)) {
                     // lock no more signals new state avail
+                    console.log("nuki lock has signalled new state is no more available");
+
                     clearTimeout(waitForBridgeReadTimeout);
                     console.log("Reading lock state after bridge read it");
                     currentlyReadingLockState = true;
-                    self._getNukiStates.call(self, options, peripheral, function (err, result) {
-                      currentlyReadingLockState = false;
-                      callback(err, result);
-                    });
+                    setTimeout(function () {  // use a little delay before reading the nuki states
+                      self._getNukiStates.call(self, options, peripheral, function (err, result) {
+                        currentlyReadingLockState = false;
+                        callback(err, result);
+                      });
+                    }, 5000);
                   }
                   newStateAvail = hasStateChange;
                 }
