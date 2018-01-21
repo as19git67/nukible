@@ -113,8 +113,9 @@ _.extend(nukible.prototype, {
         if (peripheral.connectable) {
           peripheral.on('disconnect', function () {
             if (!completed) {
-              peripheral.removeAllListeners('disconnect');
-              callback("Peripheral disconnected during command execution.");
+              // peripheral.removeAllListeners('disconnect');
+              // callback("Peripheral disconnected during command execution.");
+              console.log("Peripheral disconnected during command execution.");
             } else {
               console.log("Peripheral disconnected");
             }
