@@ -503,6 +503,7 @@ _.extend(nukible.prototype, {
           var hadTimeout = false;
           var commandTimeout = setTimeout(function () {
             hadTimeout = true;
+            self._commandInProgress = false;
             callback("Timeout in getNukiStates command");
           }, 13000);
           this._onPeripheralDiscovered("getNukiStates", peripheral, function (err, result) {
