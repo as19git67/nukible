@@ -43,7 +43,7 @@ _.extend(nukible.prototype, {
         } else {
           var retryWaitInSeconds = 10;
           var maxWaitTimeout;
-          console.log("Bluetooth not powered on. Retry in " + retryWaitInSeconds + "seconds.");
+          console.log("Bluetooth not powered on. Retry in " + retryWaitInSeconds + " seconds.");
           var intervalTimer = setInterval(function () {
             if (noble.state === 'poweredOn') {
               if (maxWaitTimeout) {
@@ -54,11 +54,11 @@ _.extend(nukible.prototype, {
               console.log("Bluetooth is now powered on");
               callback(null);
             } else {
-              console.log("Bluetooth still not powered on. Retry in " + retryWaitInSeconds + "seconds.");
+              console.log("Bluetooth still not powered on. Retry in " + retryWaitInSeconds + " seconds.");
             }
           }, retryWaitInSeconds * 1000);
           if (maxWaitTimeSeconds && maxWaitTimeSeconds > 0) {
-            console.log("Bluetooth not powered on. Retrying for max. " + maxWaitTimeSeconds + "seconds.");
+            console.log("Bluetooth not powered on. Retrying for max. " + maxWaitTimeSeconds + " seconds.");
             maxWaitTimeout = setTimeout(function () {
               if (intervalTimer) {
                 clearInterval(intervalTimer);
@@ -69,7 +69,7 @@ _.extend(nukible.prototype, {
                 console.log("Bluetooth is now powered on");
                 callback(null);
               } else {
-                callback("Bluetooth not powered on after max. wait time of " + maxWaitTimeSeconds + "seconds");
+                callback("Bluetooth not powered on after max. wait time of " + maxWaitTimeSeconds + " seconds");
               }
             }, maxWaitTimeSeconds * 1000);
           }
