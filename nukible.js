@@ -713,6 +713,8 @@ _.extend(nukible.prototype, {
       },
 
       scanForLockStateChanges: function (options, callback) {
+        var self = this;
+
         if (options) {
           _.defaults(this.options, options);
         }
@@ -721,7 +723,6 @@ _.extend(nukible.prototype, {
           if (err) {
             callback(err);
           } else {
-            var self = this;
             var newStateAvail = false;
             var waitForBridgeReadTimeout;
             var currentlyReadingLockState = false;
