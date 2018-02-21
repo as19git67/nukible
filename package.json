@@ -2,7 +2,7 @@
   "license": "MIT",
   "main": "./nukible.js",
   "name": "nukible",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": false,
   "scripts": {
     "start": "node ./sample/main.js"
@@ -13,7 +13,7 @@
     "keypress": "^0.2.1",
     "moment": "^2.20.1",
     "nconf": "^0.10.0",
-    "noble": "^1.9.0",
+    "noble": "^1.6.0",
     "sodium": "^2.0.3",
     "underscore": "^1.8.3"
   }
