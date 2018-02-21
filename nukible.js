@@ -149,47 +149,61 @@ _.extend(nukible.prototype, {
         var self = this;
         var peripheralName = peripheral.advertisement.localName;
         var completed = false;
-
+        var retryCount = 0;
+        var mxRetries = 5;
         if (peripheral.connectable) {
-          peripheral.once('disconnect', function () {
+          peripheral.on('disconnect', function () {
+            peripheral.disconnect();  // workaround for possible noble bug
             if (!completed) {
               // peripheral.removeAllListeners('disconnect');
               // callback("Peripheral disconnected during command execution.");
               console.log("Peripheral disconnected during command execution.");
+              if (retryCount < mxRetries) {
+                console.log("retrying connect to peripheral again");
+                self._connectToPeripheral(command, peripheral, callback); // try again
+              } else {
+                console.log("Max retry count reached. Don't try to connect again");
+                peripheral.removeAllListeners('disconnect');
+              }
             } else {
               console.log("Peripheral disconnected");
-            }
-          });
-
-          peripheral.connect(function (err) {
-            if (err) {
-              completed = true;
               peripheral.removeAllListeners('disconnect');
-              callback(err);
-            } else {
-              console.log("Connected to peripheral " + peripheralName);
-
-              peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
-                if (err) {
-                  completed = true;
-                  peripheral.removeAllListeners('disconnect');
-                  peripheral.disconnect();
-                  callback(err);
-                } else {
-
-                  self._onNukiServiceDiscovered.call(self, command, peripheral, services[0], function (err, result) {
-                    completed = true;
-                    peripheral.removeAllListeners('disconnect');
-                    peripheral.disconnect();
-                    callback(err, result);
-                  })
-                }
-              });
             }
           });
+
+          this._connectToPeripheral(command, peripheral, callback);
         } else {
           callback(peripheralName + " is not connectable");
         }
+      },
+
+      _connectToPeripheral: function (command, peripheral, callback) {
+        peripheral.connect(function (err) {
+          if (err) {
+            completed = true;
+            peripheral.removeAllListeners('disconnect');
+            callback(err);
+          } else {
+            console.log("Connected to peripheral " + peripheralName);
+
+            peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
+              if (err) {
+                completed = true;
+                peripheral.removeAllListeners('disconnect');
+                peripheral.disconnect();
+                callback(err);
+              } else {
+
+                self._onNukiServiceDiscovered.call(self, command, peripheral, services[0], function (err, result) {
+                  completed = true;
+                  peripheral.removeAllListeners('disconnect');
+                  peripheral.disconnect();
+                  callback(err, result);
+                })
+              }
+            });
+          }
+        });
       },
 
       _onNukiServiceDiscovered: function (command, peripheral, nukiService, callback) {
@@ -253,18 +267,18 @@ _.extend(nukible.prototype, {
               var lock = self.options.nukiLock;
               if (lock) {
                 switch (self._currentCommand) {
-                  case 'lock':
-                    self._initiateCmdLock.call(self, lock, callback);
-                    break;
-                  case 'unlock':
-                    self._initiateCmdUnlock.call(self, lock, callback);
-                    break;
-                  case 'getNukiStates':
-                    self._initiateCmdGetLockState.call(self, lock, callback);
-                    break;
-                  default:
-                    callback("Command (" + self._currentCommand + ") not implemented");
-                    self._currentCommand = undefined;
+                case 'lock':
+                  self._initiateCmdLock.call(self, lock, callback);
+                  break;
+                case 'unlock':
+                  self._initiateCmdUnlock.call(self, lock, callback);
+                  break;
+                case 'getNukiStates':
+                  self._initiateCmdGetLockState.call(self, lock, callback);
+                  break;
+                default:
+                  callback("Command (" + self._currentCommand + ") not implemented");
+                  self._currentCommand = undefined;
                 }
               } else {
                 callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
@@ -379,15 +393,15 @@ _.extend(nukible.prototype, {
       _getTriggerStr: function (trigger) {
         var triggerStr = "unknown";
         switch (trigger) {
-          case 0:
-            triggerStr = "bluetooth";
-            break;
-          case 1:
-            triggerStr = "manual";
-            break;
-          case 2:
-            triggerStr = "button";
-            break;
+        case 0:
+          triggerStr = "bluetooth";
+          break;
+        case 1:
+          triggerStr = "manual";
+          break;
+        case 2:
+          triggerStr = "button";
+          break;
         }
         return triggerStr;
       },
@@ -433,50 +447,50 @@ _.extend(nukible.prototype, {
         nukiStates.nukiState = payload.readUInt8(0);
         nukiStates.nukiStateStr = "unknown";
         switch (nukiStates.nukiState) {
-          case 0:
-            nukiStates.nukiStateStr = "uninitialized";
-            break;
-          case 1:
-            nukiStates.nukiStateStr = "pairing mode";
-            break;
-          case 2:
-            nukiStates.nukiStateStr = "door mode";
-            break;
+        case 0:
+          nukiStates.nukiStateStr = "uninitialized";
+          break;
+        case 1:
+          nukiStates.nukiStateStr = "pairing mode";
+          break;
+        case 2:
+          nukiStates.nukiStateStr = "door mode";
+          break;
         }
 
         nukiStates.lockState = payload.readUInt8(1);
         nukiStates.lockStateStr = "unknown";
         switch (nukiStates.lockState) {
-          case 0: // uncalibrated
-            nukiStates.lockStateStr = "uncalibrated";
-            break;
-          case 1: // locked
-            nukiStates.lockStateStr = "locked";
-            break;
-          case 2: // unlocking
-            nukiStates.lockStateStr = "unlocking";
-            break;
-          case 3: // unlocked
-            nukiStates.lockStateStr = "unlocked";
-            break;
-          case 4: // locking
-            nukiStates.lockStateStr = "locking";
-            break;
-          case 5: //unlatched
-            nukiStates.lockStateStr = "unlatched";
-            break;
-          case 6: // unlocked (lock'n'go)
-            nukiStates.lockStateStr = "unlocked - lock'n'go";
-            break;
-          case 7: // unlatching
-            nukiStates.lockStateStr = "unlatching";
-            break;
-          case 0xFE: // motor blocked
-            nukiStates.lockStateStr = "motor blocked";
-            break;
-          case 0xFF: // undefined
-            nukiStates.lockStateStr = "undefined";
-            break;
+        case 0: // uncalibrated
+          nukiStates.lockStateStr = "uncalibrated";
+          break;
+        case 1: // locked
+          nukiStates.lockStateStr = "locked";
+          break;
+        case 2: // unlocking
+          nukiStates.lockStateStr = "unlocking";
+          break;
+        case 3: // unlocked
+          nukiStates.lockStateStr = "unlocked";
+          break;
+        case 4: // locking
+          nukiStates.lockStateStr = "locking";
+          break;
+        case 5: //unlatched
+          nukiStates.lockStateStr = "unlatched";
+          break;
+        case 6: // unlocked (lock'n'go)
+          nukiStates.lockStateStr = "unlocked - lock'n'go";
+          break;
+        case 7: // unlatching
+          nukiStates.lockStateStr = "unlatching";
+          break;
+        case 0xFE: // motor blocked
+          nukiStates.lockStateStr = "motor blocked";
+          break;
+        case 0xFF: // undefined
+          nukiStates.lockStateStr = "undefined";
+          break;
         }
 
         nukiStates.trigger = payload.readUInt8(2);
@@ -508,21 +522,21 @@ _.extend(nukible.prototype, {
         nukiStates.lastLockAction = payload.readUInt8(15);
         nukiStates.lastLockActionStr = "unknown";
         switch (nukiStates.lastLockAction) {
-          case 1:
-            nukiStates.lastLockActionStr = "unlock";
-            break;
-          case 2:
-            nukiStates.lastLockActionStr = "lock";
-            break;
-          case 3:
-            nukiStates.lastLockActionStr = "unlatch";
-            break;
-          case 4:
-            nukiStates.lastLockActionStr = "lock ‘n’ go";
-            break;
-          case 5:
-            nukiStates.lastLockActionStr = "lock ‘n’ go with unlatch";
-            break;
+        case 1:
+          nukiStates.lastLockActionStr = "unlock";
+          break;
+        case 2:
+          nukiStates.lastLockActionStr = "lock";
+          break;
+        case 3:
+          nukiStates.lastLockActionStr = "unlatch";
+          break;
+        case 4:
+          nukiStates.lastLockActionStr = "lock ‘n’ go";
+          break;
+        case 5:
+          nukiStates.lastLockActionStr = "lock ‘n’ go with unlatch";
+          break;
         }
 
         nukiStates.lastLockActionTrigger = payload.readUInt8(16);
@@ -581,35 +595,35 @@ _.extend(nukible.prototype, {
           if (this._currentCommand !== 'getNukiStates') {
             var tmpCmdId = this.receivedData.readUInt16LE();
             switch (tmpCmdId) {
-              case nukible.prototype.CMD_ERROR:
-                errorCode = this.receivedData.readUInt8(2);
-                var errorCodeStr = errorCode.toString();
-                switch (errorCode) {
-                  case nukible.prototype.K_ERROR_BAD_PIN:
-                    errorCodeStr = "K_ERROR_BAD_PIN";
-                    break;
-                  case nukible.prototype.K_ERROR_BAD_NONCE:
-                    errorCodeStr = "K_ERROR_BAD_NONCE";
-                    break;
-                  case nukible.prototype.K_ERROR_BAD_PARAMETER:
-                    errorCodeStr = "K_ERROR_BAD_PARAMETER";
-                    break;
-                }
-                this.receivedData = new Buffer(0);
-                callback("ERROR reported from SL: " + errorCodeStr);
-                return;
-              case nukible.prototype.CMD_STATUS:
-                status = this.receivedData.readUInt8(2);
-                switch (status) {
-                  case nukible.prototype.STATUS_ACCEPTED:
-                    console.log("SL sent STATUS_ACCEPTED");
-                    break;
-                  case nukible.prototype.STATUS_COMPLETE:
-                    console.log("SL sent STATUS_COMPLETE");
-                    callback(null, {status: 'complete'});
-                }
-                this.receivedData = new Buffer(0);
-                return;
+            case nukible.prototype.CMD_ERROR:
+              errorCode = this.receivedData.readUInt8(2);
+              var errorCodeStr = errorCode.toString();
+              switch (errorCode) {
+              case nukible.prototype.K_ERROR_BAD_PIN:
+                errorCodeStr = "K_ERROR_BAD_PIN";
+                break;
+              case nukible.prototype.K_ERROR_BAD_NONCE:
+                errorCodeStr = "K_ERROR_BAD_NONCE";
+                break;
+              case nukible.prototype.K_ERROR_BAD_PARAMETER:
+                errorCodeStr = "K_ERROR_BAD_PARAMETER";
+                break;
+              }
+              this.receivedData = new Buffer(0);
+              callback("ERROR reported from SL: " + errorCodeStr);
+              return;
+            case nukible.prototype.CMD_STATUS:
+              status = this.receivedData.readUInt8(2);
+              switch (status) {
+              case nukible.prototype.STATUS_ACCEPTED:
+                console.log("SL sent STATUS_ACCEPTED");
+                break;
+              case nukible.prototype.STATUS_COMPLETE:
+                console.log("SL sent STATUS_COMPLETE");
+                callback(null, {status: 'complete'});
+              }
+              this.receivedData = new Buffer(0);
+              return;
             }
           }
           var nonceK = this.receivedData.slice(0, 24);
@@ -640,45 +654,45 @@ _.extend(nukible.prototype, {
                   var cmdId = decryptedMessge.readUInt16LE(4);
                   var payload = decryptedMessge.slice(6, decryptedMessge.length - 2);
                   switch (cmdId) {
-                    case nukible.prototype.CMD_CHALLENGE:
-                      // console.log("CHALLENGE received:", payload, payload.length);
-                      if (this.callbackForChallenge) {
-                        this.callbackForChallenge(null, payload);
-                      }
-                      break;
-                    case nukible.prototype.CMD_NUKI_STATES:
-                      var nukiStates = this._parseNukiStates(payload);
-                      callback(null, {status: 'complete', states: nukiStates});
-                      break;
-                    case nukible.prototype.CMD_STATUS:
-                      status = payload.readUInt8(0);
-                      console.log("SL sent status " + status.toString(16));
-                      if (status === nukible.prototype.STATUS_COMPLETE) {
-                        console.log("calling callback with status complete");
-                        callback(null, {status: 'complete'});
+                  case nukible.prototype.CMD_CHALLENGE:
+                    // console.log("CHALLENGE received:", payload, payload.length);
+                    if (this.callbackForChallenge) {
+                      this.callbackForChallenge(null, payload);
+                    }
+                    break;
+                  case nukible.prototype.CMD_NUKI_STATES:
+                    var nukiStates = this._parseNukiStates(payload);
+                    callback(null, {status: 'complete', states: nukiStates});
+                    break;
+                  case nukible.prototype.CMD_STATUS:
+                    status = payload.readUInt8(0);
+                    console.log("SL sent status " + status.toString(16));
+                    if (status === nukible.prototype.STATUS_COMPLETE) {
+                      console.log("calling callback with status complete");
+                      callback(null, {status: 'complete'});
+                    } else {
+                      if (status === nukible.prototype.STATUS_ACCEPTED) {
+                        console.log("SL sent status accepted");
                       } else {
-                        if (status === nukible.prototype.STATUS_ACCEPTED) {
-                          console.log("SL sent status accepted");
-                        } else {
-                          callback("ERROR: SL sent STATUS not complete");
-                        }
+                        callback("ERROR: SL sent STATUS not complete");
                       }
-                      break;
-                    case nukible.prototype.CMD_ERROR:
-                      errorCode = payload.readUInt8(0);
-                      var errorCommandId = payload.readUInt16LE(1);
-                      switch (errorCode) {
-                        case nukible.prototype.P_ERROR_NOT_PAIRING:
-                          //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
-                          callback(null, {status: 'notInPairingMode'});
-                          break;
-                        default:
-                          callback("ERROR from SL: " + errorCode.toString(16) + " for command " + errorCommandId.toString(16));
-                      }
+                    }
+                    break;
+                  case nukible.prototype.CMD_ERROR:
+                    errorCode = payload.readUInt8(0);
+                    var errorCommandId = payload.readUInt16LE(1);
+                    switch (errorCode) {
+                    case nukible.prototype.P_ERROR_NOT_PAIRING:
+                      //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                      callback(null, {status: 'notInPairingMode'});
                       break;
                     default:
-                      console.log("UNKNOWN message:", decryptedMessge);
-                      callback("ERROR: message received but not expected");
+                      callback("ERROR from SL: " + errorCode.toString(16) + " for command " + errorCommandId.toString(16));
+                    }
+                    break;
+                  default:
+                    console.log("UNKNOWN message:", decryptedMessge);
+                    callback("ERROR: message received but not expected");
                   }
                 } else {
                   console.log("ignoring data for other authorization-id (" + authorizationId + ")");
@@ -966,25 +980,25 @@ _.extend(nukible.prototype, {
               } else {
                 if (result && result.status) {
                   switch (result.status) {
-                    case 'notInPairingMode':
-                      console.log(self.peripheralInProgress.advertisement.localName +
-                                  " is not in pairing mode. Ignoring it.");
-                      delete self.peripheralInProgress;
-                      break;
-                    case 'paired':
-                      self.isPaired = true;
-                      discontinue(null, result.results);
-                      break;
-                    case 'disconnected':
-                      if (self.isPaired || !self.isInPairing) {
-                        console.log("Peripheral disconnected.");
-                      } else {
-                        console.log("ERROR: peripheral disconnected during pairing.");
-                      }
-                      delete self.peripheralInProgress;
-                      break;
-                    default:
-                      discontinue("ERROR: pairing failed for unknown reason");
+                  case 'notInPairingMode':
+                    console.log(self.peripheralInProgress.advertisement.localName +
+                                " is not in pairing mode. Ignoring it.");
+                    delete self.peripheralInProgress;
+                    break;
+                  case 'paired':
+                    self.isPaired = true;
+                    discontinue(null, result.results);
+                    break;
+                  case 'disconnected':
+                    if (self.isPaired || !self.isInPairing) {
+                      console.log("Peripheral disconnected.");
+                    } else {
+                      console.log("ERROR: peripheral disconnected during pairing.");
+                    }
+                    delete self.peripheralInProgress;
+                    break;
+                  default:
+                    discontinue("ERROR: pairing failed for unknown reason");
                   }
                 }
               }
@@ -1157,243 +1171,243 @@ _.extend(nukible.prototype, {
         var self = this;
         // console.log('response from nuki', data, isNotification);
         switch (this.state) {
-          case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY:
-            // if (this._crcOk(data)) {
-            rCmd = data.readUInt16LE(0);
+        case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY:
+          // if (this._crcOk(data)) {
+          rCmd = data.readUInt16LE(0);
+          if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
+            console.log("Step 4: SL sent first part of public key...");
+            this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
+            this.rData = data;
+          } else {
+            if (rCmd === nukible.prototype.CMD_ERROR) {
+              var errorCode = data.readUInt8(2);
+              var errorCommandId = data.readUInt16LE(3);
+              switch (errorCode) {
+              case nukible.prototype.P_ERROR_NOT_PAIRING:
+                //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
+                callback(null, {status: 'notInPairingMode'});
+                break;
+              default:
+                callback("ERROR from SL: " + errorCode.toString(16));
+              }
+            } else {
+              callback("ERROR: not expected command id " + rCmd);
+            }
+          }
+          // } else {
+          //     callback("ERROR: wrong CRC");
+          // }
+          break;
+        case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN:
+          this.rData = Buffer.concat([this.rData, data]);
+          if (this._crcOk(this.rData)) {
+            rCmd = this.rData.readUInt16LE(0);
             if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
-              console.log("Step 4: SL sent first part of public key...");
-              this.state = nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN;
-              this.rData = data;
+              this.slPubKey = this.rData.slice(2, this.rData.length - 2);
+              console.log("Step 4: SL sent PK:");
+
+              console.log("Step 5: creating new CL key pair...");
+
+              var clKeys = new sodium.Key.ECDH();
+              this.clSk = clKeys.sk().get();
+              this.clPk = clKeys.pk().get();
+
+              console.log("Step 7: creating diffie-hellman key...");
+              // create a Diffie Hellman key out of the clients secret key and the nukis public key
+              // crypto_scalarmult_curve25519(s,sk,pk)
+              var k = sodium.api.crypto_scalarmult(self.clSk, self.slPubKey);
+              // console.log("CL DH Key from CL SK and SL PK: ", k);
+
+              console.log("Step 8: derive long term shared key...");
+              // derive a longterm shared secret key s from k using function kdf1
+              // static const unsigned char _0[16];
+              // static const unsigned char sigma[16] = "expand 32-byte k";
+              // crypto_core_hsalsa20(k,_0,s,sigma)
+              var hsalsa20 = new HSalsa20();
+              this.options.sharedSecret = new Buffer(32);
+              var inv = new Buffer(16);
+              inv.fill(0);
+              var c = new Buffer("expand 32-byte k");
+              hsalsa20.crypto_core(this.options.sharedSecret, inv, k, c);
+              // console.log("derived shared key: ", this.options.sharedSecret);
+
+              this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE;
+              console.log("Step 6: CL sending PK...");
+
+              var wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_ID_PUBLIC_KEY, this.clPk);
+              this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
             } else {
-              if (rCmd === nukible.prototype.CMD_ERROR) {
-                var errorCode = data.readUInt8(2);
-                var errorCommandId = data.readUInt16LE(3);
-                switch (errorCode) {
-                  case nukible.prototype.P_ERROR_NOT_PAIRING:
-                    //callback("ERROR: public key is being requested via request data command, but keyturner is not in pairing mode");
-                    callback(null, {status: 'notInPairingMode'});
-                    break;
-                  default:
-                    callback("ERROR from SL: " + errorCode.toString(16));
-                }
-              } else {
-                callback("ERROR: not expected command id " + rCmd);
-              }
+              callback("ERROR: not expected command id " + rCmd);
             }
-            // } else {
-            //     callback("ERROR: wrong CRC");
-            // }
-            break;
-          case nukible.prototype.STATE_PAIRING_CL_REQ_PUBKEY_FIN:
-            this.rData = Buffer.concat([this.rData, data]);
-            if (this._crcOk(this.rData)) {
-              rCmd = this.rData.readUInt16LE(0);
-              if (rCmd === nukible.prototype.CMD_ID_PUBLIC_KEY) {
-                this.slPubKey = this.rData.slice(2, this.rData.length - 2);
-                console.log("Step 4: SL sent PK:");
-
-                console.log("Step 5: creating new CL key pair...");
-
-                var clKeys = new sodium.Key.ECDH();
-                this.clSk = clKeys.sk().get();
-                this.clPk = clKeys.pk().get();
-
-                console.log("Step 7: creating diffie-hellman key...");
-                // create a Diffie Hellman key out of the clients secret key and the nukis public key
-                // crypto_scalarmult_curve25519(s,sk,pk)
-                var k = sodium.api.crypto_scalarmult(self.clSk, self.slPubKey);
-                // console.log("CL DH Key from CL SK and SL PK: ", k);
-
-                console.log("Step 8: derive long term shared key...");
-                // derive a longterm shared secret key s from k using function kdf1
-                // static const unsigned char _0[16];
-                // static const unsigned char sigma[16] = "expand 32-byte k";
-                // crypto_core_hsalsa20(k,_0,s,sigma)
-                var hsalsa20 = new HSalsa20();
-                this.options.sharedSecret = new Buffer(32);
-                var inv = new Buffer(16);
-                inv.fill(0);
-                var c = new Buffer("expand 32-byte k");
-                hsalsa20.crypto_core(this.options.sharedSecret, inv, k, c);
-                // console.log("derived shared key: ", this.options.sharedSecret);
-
-                this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE;
-                console.log("Step 6: CL sending PK...");
-
-                var wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_ID_PUBLIC_KEY, this.clPk);
-                this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
-              } else {
-                callback("ERROR: not expected command id " + rCmd);
-              }
-            } else {
-              callback("ERROR: wrong CRC");
-            }
-            break;
-          case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE:
-            rCmd = data.readUInt16LE(0);
+          } else {
+            callback("ERROR: wrong CRC");
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE:
+          rCmd = data.readUInt16LE(0);
+          if (rCmd === nukible.prototype.CMD_CHALLENGE) {
+            console.log("Step 9: SL sent first part of challenge...");
+            this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_FIN;
+            this.rData = data;
+          } else {
+            callback("ERROR: not expected command id " + rCmd + ".");
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_FIN:
+          this.rData = Buffer.concat([this.rData, data]);
+          if (this._crcOk(this.rData)) {
+            rCmd = this.rData.readUInt16LE(0);
             if (rCmd === nukible.prototype.CMD_CHALLENGE) {
-              console.log("Step 9: SL sent first part of challenge...");
-              this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_FIN;
-              this.rData = data;
+              this.nonceK = this.rData.slice(2, this.rData.length - 2);
+              console.log("Step 9: SL sent challenge.");
+
+              console.log("Step 10: CL creates r from CL PK, SL PK and nonceK");
+              r = Buffer.concat([this.clPk, this.slPubKey, this.nonceK]);
+
+              console.log("Step 11: CL creates authenticator from r");
+              // use HMAC-SHA256 to create the authenticator
+              authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
+              console.log("Step 13: CL sends authorization authenticator...");
+
+              this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2;
+
+              wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_AUTHENTICATOR, authenticator);
+              this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
             } else {
               callback("ERROR: not expected command id " + rCmd + ".");
             }
-            break;
-          case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_FIN:
-            this.rData = Buffer.concat([this.rData, data]);
-            if (this._crcOk(this.rData)) {
-              rCmd = this.rData.readUInt16LE(0);
-              if (rCmd === nukible.prototype.CMD_CHALLENGE) {
-                this.nonceK = this.rData.slice(2, this.rData.length - 2);
-                console.log("Step 9: SL sent challenge.");
-
-                console.log("Step 10: CL creates r from CL PK, SL PK and nonceK");
-                r = Buffer.concat([this.clPk, this.slPubKey, this.nonceK]);
-
-                console.log("Step 11: CL creates authenticator from r");
-                // use HMAC-SHA256 to create the authenticator
-                authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
-                console.log("Step 13: CL sends authorization authenticator...");
-
-                this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2;
-
-                wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_AUTHENTICATOR, authenticator);
-                this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
-              } else {
-                callback("ERROR: not expected command id " + rCmd + ".");
-              }
-            } else {
-              callback("ERROR: wrong CRC.");
-            }
-            break;
-          case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2:
-            rCmd = data.readUInt16LE(0);
+          } else {
+            callback("ERROR: wrong CRC.");
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2:
+          rCmd = data.readUInt16LE(0);
+          if (rCmd === nukible.prototype.CMD_CHALLENGE) {
+            console.log("Step 15a: SL sent first part of challenge.");
+            this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2_FIN;
+            this.rData = data;
+          } else {
+            callback("ERROR: not expected command id " + rCmd + ".");
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2_FIN:
+          this.rData = Buffer.concat([this.rData, data]);
+          if (this._crcOk(this.rData)) {
+            rCmd = this.rData.readUInt16LE(0);
             if (rCmd === nukible.prototype.CMD_CHALLENGE) {
-              console.log("Step 15a: SL sent first part of challenge.");
-              this.state = nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2_FIN;
-              this.rData = data;
+              this.nonceK = this.rData.slice(2, this.rData.length - 2);
+              this.rData = new Buffer(0);
+              console.log("Step 15b: SL sent challenge.");
+
+              console.log("Step 16a: creating authorization data...");
+              var ids = new Buffer(5);
+              ids.writeUInt8(this.options.appType); // ID type: 2: Fob
+              ids.writeUInt32LE(this.options.appId, 1);
+
+              var nameBuffer = new Buffer(32).fill(' ');
+              var name = new Buffer(this.options.name);
+              if (name.length > nameBuffer.length) {
+                name.copy(nameBuffer, 0, 0, nameBuffer.length);
+              } else {
+                name.copy(nameBuffer, 0, 0, name.length);
+              }
+              this.nonceABF = new Buffer(nukible.prototype.NUKI_NONCEBYTES);
+              sodium.api.randombytes_buf(this.nonceABF);
+
+              // create authenticator for the authorization data message
+              r = Buffer.concat([ids, nameBuffer, this.nonceABF, this.nonceK]);
+              // use HMAC-SHA256 to create the authenticator
+              authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
+
+              var wData = Buffer.concat([authenticator, ids, nameBuffer, this.nonceABF]);
+              wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_DATA, wData);
+              // console.log("CL sending authorization data", wDataWithCrc);
+              console.log("Step 16b: sending authorization data...");
+              this.state = nukible.prototype.STATE_PAIRING_SL_SEND_AUTH_ID;
+              this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
             } else {
               callback("ERROR: not expected command id " + rCmd + ".");
             }
-            break;
-          case nukible.prototype.STATE_PAIRING_CL_REQ_CHALLENGE_2_FIN:
-            this.rData = Buffer.concat([this.rData, data]);
+          } else {
+            callback("ERROR: wrong CRC.");
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_SL_SEND_AUTH_ID:
+          this.rData = Buffer.concat([this.rData, data]);
+          if (this.rData.length >= 88) {
             if (this._crcOk(this.rData)) {
               rCmd = this.rData.readUInt16LE(0);
-              if (rCmd === nukible.prototype.CMD_CHALLENGE) {
-                this.nonceK = this.rData.slice(2, this.rData.length - 2);
-                this.rData = new Buffer(0);
-                console.log("Step 15b: SL sent challenge.");
+              if (rCmd === nukible.prototype.CMD_AUTHORIZATION_ID) {
+                console.log("Step 19: SL sent authorization id");
+                this.rData = this.rData.slice(2, this.rData.length - 2);
+                var slAuthenticator = this.rData.slice(0, 32);
+                var authorizationIdBuffer = this.rData.slice(32, 32 + 4);
+                var authorizationId = authorizationIdBuffer.readUInt32LE();
+                var slUuid = this.rData.slice(36, 36 + 16);
+                this.nonceK = this.rData.slice(36 + 16, 36 + 16 + 32);
 
-                console.log("Step 16a: creating authorization data...");
-                var ids = new Buffer(5);
-                ids.writeUInt8(this.options.appType); // ID type: 2: Fob
-                ids.writeUInt32LE(this.options.appId, 1);
+                // console.log("SL sent authenticator", slAuthenticator);
+                console.log("SL sent authorization-id " + authorizationId);
+                console.log("SL sent slUuid", slUuid.toString('hex'));
 
-                var nameBuffer = new Buffer(32).fill(' ');
-                var name = new Buffer(this.options.name);
-                if (name.length > nameBuffer.length) {
-                  name.copy(nameBuffer, 0, 0, nameBuffer.length);
-                } else {
-                  name.copy(nameBuffer, 0, 0, name.length);
-                }
-                this.nonceABF = new Buffer(nukible.prototype.NUKI_NONCEBYTES);
-                sodium.api.randombytes_buf(this.nonceABF);
+                this.results = {
+                  nukiUuid: slUuid.toString('hex'),
+                  nukiAuthorizationId: authorizationId,
+                  sharedSecret: this.options.sharedSecret.toString('hex')
+                };
 
-                // create authenticator for the authorization data message
-                r = Buffer.concat([ids, nameBuffer, this.nonceABF, this.nonceK]);
+                console.log("Step 20: verifying authenticator...");
+                r = Buffer.concat([authorizationIdBuffer, slUuid, this.nonceK, this.nonceABF]);
                 // use HMAC-SHA256 to create the authenticator
-                authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
+                var cr = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
 
-                var wData = Buffer.concat([authenticator, ids, nameBuffer, this.nonceABF]);
-                wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_DATA, wData);
-                // console.log("CL sending authorization data", wDataWithCrc);
-                console.log("Step 16b: sending authorization data...");
-                this.state = nukible.prototype.STATE_PAIRING_SL_SEND_AUTH_ID;
-                this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, callback);
-              } else {
-                callback("ERROR: not expected command id " + rCmd + ".");
-              }
-            } else {
-              callback("ERROR: wrong CRC.");
-            }
-            break;
-          case nukible.prototype.STATE_PAIRING_SL_SEND_AUTH_ID:
-            this.rData = Buffer.concat([this.rData, data]);
-            if (this.rData.length >= 88) {
-              if (this._crcOk(this.rData)) {
-                rCmd = this.rData.readUInt16LE(0);
-                if (rCmd === nukible.prototype.CMD_AUTHORIZATION_ID) {
-                  console.log("Step 19: SL sent authorization id");
-                  this.rData = this.rData.slice(2, this.rData.length - 2);
-                  var slAuthenticator = this.rData.slice(0, 32);
-                  var authorizationIdBuffer = this.rData.slice(32, 32 + 4);
-                  var authorizationId = authorizationIdBuffer.readUInt32LE();
-                  var slUuid = this.rData.slice(36, 36 + 16);
-                  this.nonceK = this.rData.slice(36 + 16, 36 + 16 + 32);
+                if (Buffer.compare(slAuthenticator, cr) === 0) {
+                  console.log("Step 20: authenticator verified ok.");
 
-                  // console.log("SL sent authenticator", slAuthenticator);
-                  console.log("SL sent authorization-id " + authorizationId);
-                  console.log("SL sent slUuid", slUuid.toString('hex'));
-
-                  this.results = {
-                    nukiUuid: slUuid.toString('hex'),
-                    nukiAuthorizationId: authorizationId,
-                    sharedSecret: this.options.sharedSecret.toString('hex')
-                  };
-
-                  console.log("Step 20: verifying authenticator...");
-                  r = Buffer.concat([authorizationIdBuffer, slUuid, this.nonceK, this.nonceABF]);
+                  console.log("Step 21: CL creating authorization-id confirmation message...");
+                  r = Buffer.concat([authorizationIdBuffer, this.nonceK]);
                   // use HMAC-SHA256 to create the authenticator
-                  var cr = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
+                  authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
 
-                  if (Buffer.compare(slAuthenticator, cr) === 0) {
-                    console.log("Step 20: authenticator verified ok.");
-
-                    console.log("Step 21: CL creating authorization-id confirmation message...");
-                    r = Buffer.concat([authorizationIdBuffer, this.nonceK]);
-                    // use HMAC-SHA256 to create the authenticator
-                    authenticator = crypto.createHmac('SHA256', this.options.sharedSecret).update(r).digest();
-
-                    wData = Buffer.concat([authenticator, authorizationIdBuffer]);
-                    wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_ID_CONFIRMATION, wData);
-                    console.log("Step 21: sending authorization-id confirmation...");
-                    this.state = nukible.prototype.STATE_PAIRING_SL_SEND_STATUS_COMLETE;
-                    this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, function (err) {
-                      if (err) {
-                        callback(err);
-                      } else {
-                        self.rData = new Buffer(0);
-                        // console.log("CL Authorization-ID confirmation sent");
-                      }
-                    });
-                  } else {
-                    callback("CL and SL authenticators are not equal. Possible man in the middle attack.");
-                  }
-
+                  wData = Buffer.concat([authenticator, authorizationIdBuffer]);
+                  wDataWithCrc = this._prepareDataToSend(nukible.prototype.CMD_AUTHORIZATION_ID_CONFIRMATION, wData);
+                  console.log("Step 21: sending authorization-id confirmation...");
+                  this.state = nukible.prototype.STATE_PAIRING_SL_SEND_STATUS_COMLETE;
+                  this.nukiPairingGeneralDataIOCharacteristic.write(wDataWithCrc, false, function (err) {
+                    if (err) {
+                      callback(err);
+                    } else {
+                      self.rData = new Buffer(0);
+                      // console.log("CL Authorization-ID confirmation sent");
+                    }
+                  });
                 } else {
-                  callback("ERROR: not expected command id " + rCmd + ".");
+                  callback("CL and SL authenticators are not equal. Possible man in the middle attack.");
                 }
-              } else {
-                callback("ERROR: wrong CRC.");
-              }
-            }
-            break;
-          case nukible.prototype.STATE_PAIRING_SL_SEND_STATUS_COMLETE:
-            if (this._crcOk(data)) {
-              rCmd = data.readUInt16LE(0);
-              if (rCmd === nukible.prototype.CMD_STATUS) {
-                console.log("Step 22: SL sent status complete.");
-                callback(null, {status: 'paired', results: this.results});
+
               } else {
                 callback("ERROR: not expected command id " + rCmd + ".");
               }
             } else {
               callback("ERROR: wrong CRC.");
             }
-            break;
-          default:
-            callback("ERROR: undefined state " + this.state);
+          }
+          break;
+        case nukible.prototype.STATE_PAIRING_SL_SEND_STATUS_COMLETE:
+          if (this._crcOk(data)) {
+            rCmd = data.readUInt16LE(0);
+            if (rCmd === nukible.prototype.CMD_STATUS) {
+              console.log("Step 22: SL sent status complete.");
+              callback(null, {status: 'paired', results: this.results});
+            } else {
+              callback("ERROR: not expected command id " + rCmd + ".");
+            }
+          } else {
+            callback("ERROR: wrong CRC.");
+          }
+          break;
+        default:
+          callback("ERROR: undefined state " + this.state);
         }
       },
 
