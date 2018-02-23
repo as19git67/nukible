@@ -184,7 +184,7 @@ _.extend(nukible.prototype, {
             peripheral.removeAllListeners('disconnect');
             callback(err);
           } else {
-            console.log("Connected to peripheral " + peripheralName);
+            console.log("Connected to peripheral " + peripheral.advertisement.localName);
 
             peripheral.discoverServices([nukible.prototype.nukiServiceUuid], function (err, services) {
               if (err) {

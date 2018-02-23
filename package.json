@@ -2,7 +2,7 @@
   "license": "MIT",
   "main": "./nukible.js",
   "name": "nukible",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": false,
   "scripts": {
     "start": "node ./sample/main.js"
