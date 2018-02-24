@@ -159,6 +159,7 @@ _.extend(nukible.prototype, {
               // callback("Peripheral disconnected during command execution.");
               console.log("Peripheral disconnected during command execution.");
               if (retryCount < mxRetries) {
+                retryCount = retryCount + 1;
                 console.log("retrying connect to peripheral again");
                 self._connectToPeripheral(command, peripheral, callback); // try again
               } else {
@@ -178,6 +179,7 @@ _.extend(nukible.prototype, {
       },
 
       _connectToPeripheral: function (command, peripheral, callback) {
+        var self = this;
         peripheral.connect(function (err) {
           if (err) {
             completed = true;
