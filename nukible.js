@@ -725,6 +725,7 @@ _.extend(nukible.prototype, {
           if (lockPeripheralId === peripheralId) {
             self._getNukiStates.call(self, options, peripheral, callback);
           }
+          noble.removeAllListeners('discover');
         });
       },
 
