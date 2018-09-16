@@ -36,10 +36,9 @@ __Note:__ The above command requires ```setcap``` to be installed, it can be ins
 
 (see https://github.com/sandeepmistry/noble#running-on-linux)
 
-## Get node modules
-In the cloned repository run:
+## Get node module
 ```sh
-npm install
+npm install nukible --save
 ```
 
 ## Run it
