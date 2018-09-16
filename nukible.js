@@ -270,10 +270,11 @@ _.extend(nukible.prototype, {
               if (lock) {
                 switch (self._currentCommand) {
                 case 'lock':
-                  self._initiateCmdLock.call(self, lock, callback);
-                  break;
                 case 'unlock':
-                  self._initiateCmdUnlock.call(self, lock, callback);
+                case 'unlatch':
+                case 'lock_n_go':
+                case 'lock_n_go_with_unlatch':
+                  self._initiateCmdLock.call(self, lock, self._currentCommand, callback);
                   break;
                 case 'getNukiStates':
                   self._initiateCmdGetLockState.call(self, lock, callback);
@@ -291,7 +292,7 @@ _.extend(nukible.prototype, {
         });
       },
 
-      _initiateCmdLock: function (lockConfig, callback) {
+      _initiateCmdLock: function (lockConfig, action, callback) {
         var self = this;
         var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
         this._requestNonceFromSL(lockConfig.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
@@ -299,7 +300,26 @@ _.extend(nukible.prototype, {
             callback(err);
           } else {
             var data1 = new Buffer(6);
-            data1.writeUInt8(2, 0); // 0x02 is lock
+             switch (action) {
+              case 'lock':
+                data1.writeUInt8(2, 0); // 0x02 is lock
+                break;
+              case 'unlock':
+                data1.writeUInt8(1, 0); // 0x01 is unlock
+                break;
+              case 'unlatch':
+                data1.writeUInt8(3, 0); // 0x03 is unlatch
+                break;
+              case 'lock_n_go':
+                data1.writeUInt8(4, 0); // 0x04 is Lock'n' Go
+                break;
+              case 'lock_n_go_with_unlatch':
+                data1.writeUInt8(5, 0); // 0x05 is Lock'n' with unlatch
+                break;
+              default:
+                console.log("Command "+ action +" doesn't exist'");
+                break;
+             }
             data1.writeUInt32LE(self.options.appId, 1);
             data1.writeUInt8(0, 5); // no flags set
             var wData = Buffer.concat([data1, nonceK]);
@@ -315,36 +335,6 @@ _.extend(nukible.prototype, {
                 callback(err);
               }
             });
-          }
-        });
-      },
-
-      _initiateCmdUnlock: function (lockConfig, callback) {
-        var self = this;
-        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
-        this._requestNonceFromSL(lockConfig.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
-          if (err) {
-            callback(err);
-          } else {
-            var data1 = new Buffer(6);
-            data1.writeUInt8(1, 0); // 0x01 is unlock
-            data1.writeUInt32LE(self.options.appId, 1);
-            data1.writeUInt8(0, 5); // no flags set
-            var wData = Buffer.concat([data1, nonceK]);
-            var wDataEncrypted = self._prepareEncryptedDataToSend(
-                nukible.prototype.CMD_LOCK_ACTION,
-                lockConfig.nukiAuthorizationId,
-                sharedSecret,
-                wData);
-
-            self.nukiUSDIOCharacteristic.write(wDataEncrypted, false, function (err) {
-              if (err) {
-                console.log("ERROR: failed to send encrypted message for CMD_LOCK_ACTION");
-                callback(err);
-              }
-            });
-
-            //                                                callback(null, {status: 'unlocked'});
           }
         });
       },
@@ -830,7 +820,7 @@ _.extend(nukible.prototype, {
         noble.removeAllListeners('discover');
       },
 
-      lock: function (options, callback) {
+      _lockAction: function (command, options, callback) {
         if (this._commandInProgress) {
           callback("Other command still in progress");
         } else {
@@ -846,11 +836,11 @@ _.extend(nukible.prototype, {
             } else {
 
               var t = setTimeout(function () {
-                console.log("Timeout. Aborting lock.");
+                console.log("Timeout. Aborting "+ command);
                 noble.removeAllListeners('discover');
                 self._commandInProgress = false;
                 if (_.isFunction(callback)) {
-                  callback("lock timeout");
+                  callback(command + " timeout");
                 }
               }, 30000);
 
@@ -860,7 +850,8 @@ _.extend(nukible.prototype, {
                     var lockPeripheralId = self.options.peripheralId;
                     if (lockPeripheralId === peripheralId) {
                       noble.removeAllListeners('discover');
-                      self._onPeripheralDiscovered.call(self, "lock", peripheral, function (err, result) {
+                      console.log("Running command "+ command);
+                      self._onPeripheralDiscovered.call(self, command, peripheral, function (err, result) {
                         self._commandInProgress = false;
                         clearTimeout(t);
                         if (err) {
@@ -888,62 +879,29 @@ _.extend(nukible.prototype, {
         }
       },
 
+      lock: function (options, callback) {
+        var self = this;
+        self._lockAction('lock', options, callback);
+      },
+
       unlock: function (options, callback) {
-        if (this._commandInProgress) {
-          callback("Other command still in progress");
-        } else {
-          this._commandInProgress = true;
-          var self = this;
+        var self = this;
+        self._lockAction('unlock', options, callback);
+      },
 
-          if (options) {
-            _.defaults(this.options, options);
-          }
+      unlatch: function (options, callback) {
+        var self = this;
+        self._lockAction('unlatch', options, callback);
+      },
 
-          this._waitForBluetoothPoweredOn(200, function (err) {
-            if (err) {
-              callback(err);
-            } else {
+      lock_n_go: function (options, callback) {
+        var self = this;
+        self._lockAction('lock_n_go', options, callback);
+      },
 
-              var t = setTimeout(function () {
-                console.log("Timeout. Aborting unlock.");
-                noble.removeAllListeners('discover');
-                self._commandInProgress = false;
-                if (_.isFunction(callback)) {
-                  callback("unlock timeout");
-                }
-              }, 30000);
-              noble.on('discover',
-                  function (peripheral) {
-                    var peripheralId = peripheral.uuid;
-                    var lockPeripheralId = self.options.peripheralId;
-                    if (lockPeripheralId === peripheralId) {
-                      noble.removeAllListeners('discover');
-                      self._onPeripheralDiscovered.call(self, "unlock", peripheral, function (err, result) {
-                        self._commandInProgress = false;
-                        clearTimeout(t);
-                        if (err) {
-                          if (_.isFunction(callback)) {
-                            callback(err);
-                          }
-                        } else {
-                          if (result && result.status === 'complete') {
-                            if (_.isFunction(callback)) {
-                              callback(null);
-                            }
-                          } else {
-                            if (_.isFunction(callback)) {
-                              callback("ERROR: unknown");
-                            }
-                          }
-                        }
-                      });
-                    } else {
-                      // console.log("ignoring peripheral with id " + peripheralId);
-                    }
-                  });
-            }
-          });
-        }
+      lock_n_go_with_unlatch: function (options, callback) {
+        var self = this;
+        self._lockAction('lock_n_go_with_unlatch', options, callback);
       },
 
       pair: function (options, callback) {
