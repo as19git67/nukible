@@ -1,4 +1,4 @@
-var noble = require('noble');
+var noble = require('@abandonware/noble');
 var _ = require('underscore');
 var crc = require('crc');
 var sodium = require('sodium');
@@ -116,24 +116,24 @@ _.extend(nukible.prototype, {
       },
 
       _prepareEncryptedDataToSend: function (cmd, authorizationId, sharedSecret, payload) {
-        var nonce = new Buffer(24);
+        var nonce = Buffer.alloc(24);
         sodium.api.randombytes_buf(nonce);
 
-        var authIdBuffer = new Buffer(4);
+        var authIdBuffer = Buffer.alloc(4);
         authIdBuffer.writeUInt32LE(authorizationId);
-        var cmdBuffer = new Buffer(2);
+        var cmdBuffer = Buffer.alloc(2);
         cmdBuffer.writeUInt16LE(cmd);
 
         var pDataWithoutCrc = Buffer.concat([authIdBuffer, cmdBuffer, payload]);
         var checksum = crc.crc16ccitt(pDataWithoutCrc);
-        var checksumBuffer = new Buffer(2);
+        var checksumBuffer = Buffer.alloc(2);
         checksumBuffer.writeUInt16LE(checksum);
         var pData = Buffer.concat([pDataWithoutCrc, checksumBuffer]);
 
         var pDataEncrypted = sodium.api.crypto_secretbox(pData, nonce, sharedSecret).slice(16); // skip first 16 bytes
         // console.log("encrypted message: ", pDataEncrypted);
 
-        var lenBuffer = new Buffer(2);
+        var lenBuffer = Buffer.alloc(2);
         lenBuffer.writeUInt16LE(pDataEncrypted.length);
 
         var aData = Buffer.concat([nonce, authIdBuffer, lenBuffer]);
@@ -238,7 +238,7 @@ _.extend(nukible.prototype, {
               self.nukiUSDIOCharacteristic) {
             console.log("All nuki.io characteristics that are needed were found.");
 
-            self.receivedData = new Buffer(0);
+            self.receivedData = Buffer.alloc(0);
 
             // install a timeout function to finish the command with an error if no data was received from the nuki
             // keyturner to complete the command
@@ -294,12 +294,12 @@ _.extend(nukible.prototype, {
 
       _initiateCmdLock: function (lockConfig, action, callback) {
         var self = this;
-        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
+        var sharedSecret = Buffer.from(lockConfig.sharedSecret, 'hex');
         this._requestNonceFromSL(lockConfig.nukiAuthorizationId, sharedSecret, function (err, nonceK) {
           if (err) {
             callback(err);
           } else {
-            var data1 = new Buffer(6);
+            var data1 = Buffer.alloc(6);
              switch (action) {
               case 'lock':
                 data1.writeUInt8(2, 0); // 0x02 is lock
@@ -341,9 +341,9 @@ _.extend(nukible.prototype, {
 
       _initiateCmdGetLockState: function (lockConfig, callback) {
         var self = this;
-        var sharedSecret = new Buffer(lockConfig.sharedSecret, 'hex');
+        var sharedSecret = Buffer.from(lockConfig.sharedSecret, 'hex');
 
-        var data1 = new Buffer(2);
+        var data1 = Buffer.alloc(2);
         data1.writeUInt16LE(nukible.prototype.CMD_NUKI_STATES);
         var wDataEncrypted = self._prepareEncryptedDataToSend(
             nukible.prototype.CMD_REQUEST_DATA,
@@ -360,8 +360,8 @@ _.extend(nukible.prototype, {
       },
 
       _requestNonceFromSL: function (authorizationId, sharedSecret, callback) {
-        this.receivedData = new Buffer(0);
-        var wData = new Buffer(2);
+        this.receivedData = Buffer.alloc(0);
+        var wData = Buffer.alloc(2);
         wData.writeUInt16LE(nukible.prototype.CMD_CHALLENGE, 0); // request a challenge
 
         var wDataEncrypted = this._prepareEncryptedDataToSend(
@@ -399,23 +399,23 @@ _.extend(nukible.prototype, {
       },
 
       _makeKeyBuffer: function (inKey) {
-        var keyAsBuffer = new Buffer(0);
+        var keyAsBuffer = Buffer.alloc(0);
         if (_.isString(inKey)) {
-          keyAsBuffer = new Buffer(inKey, 'hex');
+          keyAsBuffer = Buffer.from(inKey, 'hex');
         } else {
           if (_.isArray(inKey)) {
-            keyAsBuffer = new Buffer(inKey);
+            keyAsBuffer = Buffer.from(inKey);
           }
         }
         return keyAsBuffer;
       },
 
       _prepareDataToSend: function (cmd, data) {
-        var cmdBuffer = new Buffer(2);
+        var cmdBuffer = Buffer.alloc(2);
         cmdBuffer.writeUInt16LE(cmd);
         var responseData = Buffer.concat([cmdBuffer, data]);
         var checksum = crc.crc16ccitt(responseData);
-        var checksumBuffer = new Buffer(2);
+        var checksumBuffer = Buffer.alloc(2);
         checksumBuffer.writeUInt16LE(checksum);
         var dataToSend = Buffer.concat([responseData, checksumBuffer]);
         return dataToSend;
@@ -601,7 +601,7 @@ _.extend(nukible.prototype, {
                 errorCodeStr = "K_ERROR_BAD_PARAMETER";
                 break;
               }
-              this.receivedData = new Buffer(0);
+              this.receivedData = Buffer.alloc(0);
               callback("ERROR reported from SL: " + errorCodeStr);
               return;
             case nukible.prototype.CMD_STATUS:
@@ -614,7 +614,7 @@ _.extend(nukible.prototype, {
                 console.log("SL sent STATUS_COMPLETE");
                 callback(null, {status: 'complete'});
               }
-              this.receivedData = new Buffer(0);
+              this.receivedData = Buffer.alloc(0);
               return;
             }
           }
@@ -626,9 +626,9 @@ _.extend(nukible.prototype, {
           var lock = this.options.nukiLock;
           if (lock) {
             if (lock.sharedSecret) {
-              var sharedSecret = new Buffer(lock.sharedSecret, 'hex');
+              var sharedSecret = Buffer.from(lock.sharedSecret, 'hex');
 
-              var prefixBuff = new Buffer(16);
+              var prefixBuff = Buffer.alloc(16);
               prefixBuff.fill(0);
 
               var decryptedMessge = sodium.api.crypto_secretbox_open(Buffer.concat([prefixBuff, encryptedMessage]),
@@ -699,7 +699,7 @@ _.extend(nukible.prototype, {
             callback("Not paired with this lock. Peripheral UUID is " + peripheralId);
           }
 
-          this.receivedData = new Buffer(0);
+          this.receivedData = Buffer.alloc(0);
         }
       },
 
@@ -734,7 +734,7 @@ _.extend(nukible.prototype, {
             var waitForBridgeReadTimeout;
             var currentlyReadingLockState = false;
 
-            var previousStateBuffer = new Buffer(0);
+            var previousStateBuffer = Buffer.alloc(0);
             noble.on('discover', function (peripheral) {
               var peripheralId = peripheral.uuid;
               var lockPeripheralId = self.options.peripheralId;
@@ -965,7 +965,7 @@ _.extend(nukible.prototype, {
               }
             });
           }
-        }, 100);
+        }, 1000);
         var t = setTimeout(function () {
           clearInterval(i);
           console.log("Timeout. Aborting pairing.");
@@ -985,10 +985,10 @@ _.extend(nukible.prototype, {
             return;
           }
           if (!peripheral.connectable) {
-            console.log("Ignoring not connectable peripheral " + peripheral.id);
+            //console.log("Ignoring not connectable peripheral " + peripheral.id);
             return;
           }
-          if (peripheral.advertisement.localName) { // Nuki locks have a name
+          if (peripheral.advertisement.localName && peripheral.advertisement.localName.startsWith('Nuki')) { // Nuki locks have a name
             if (!_.contains(self.knownPeripherals, peripheral.id)) {
               console.log("Adding peripheral " + peripheral.advertisement.localName + " to try-to-pair queue");
               self.peripheralQueue.push(peripheral);
@@ -1107,7 +1107,7 @@ _.extend(nukible.prototype, {
                     });
                   });
 
-                  var d = new Buffer(2);
+                  var d = Buffer.alloc(2);
                   d.writeUInt16LE(nukible.prototype.CMD_ID_PUBLIC_KEY);
                   var wCmdWithChecksum = self._prepareDataToSend.call(self, nukible.prototype.CMD_REQUEST_DATA, d);
                   self.nukiPairingGeneralDataIOCharacteristic.write(wCmdWithChecksum, false, function (err) {
@@ -1185,10 +1185,10 @@ _.extend(nukible.prototype, {
               // static const unsigned char sigma[16] = "expand 32-byte k";
               // crypto_core_hsalsa20(k,_0,s,sigma)
               var hsalsa20 = new HSalsa20();
-              this.options.sharedSecret = new Buffer(32);
-              var inv = new Buffer(16);
+              this.options.sharedSecret = Buffer.alloc(32);
+              var inv = Buffer.alloc(16);
               inv.fill(0);
-              var c = new Buffer("expand 32-byte k");
+              var c = Buffer.from("expand 32-byte k");
               hsalsa20.crypto_core(this.options.sharedSecret, inv, k, c);
               // console.log("derived shared key: ", this.options.sharedSecret);
 
@@ -1257,22 +1257,22 @@ _.extend(nukible.prototype, {
             rCmd = this.rData.readUInt16LE(0);
             if (rCmd === nukible.prototype.CMD_CHALLENGE) {
               this.nonceK = this.rData.slice(2, this.rData.length - 2);
-              this.rData = new Buffer(0);
+              this.rData = Buffer.alloc(0);
               console.log("Step 15b: SL sent challenge.");
 
               console.log("Step 16a: creating authorization data...");
-              var ids = new Buffer(5);
+              var ids = Buffer.alloc(5);
               ids.writeUInt8(this.options.appType); // ID type: 2: Fob
               ids.writeUInt32LE(this.options.appId, 1);
 
-              var nameBuffer = new Buffer(32).fill(' ');
-              var name = new Buffer(this.options.name);
+              var nameBuffer = Buffer.alloc(32).fill(' ');
+              var name = Buffer.from(this.options.name);
               if (name.length > nameBuffer.length) {
                 name.copy(nameBuffer, 0, 0, nameBuffer.length);
               } else {
                 name.copy(nameBuffer, 0, 0, name.length);
               }
-              this.nonceABF = new Buffer(nukible.prototype.NUKI_NONCEBYTES);
+              this.nonceABF = Buffer.alloc(nukible.prototype.NUKI_NONCEBYTES);
               sodium.api.randombytes_buf(this.nonceABF);
 
               // create authenticator for the authorization data message
@@ -1338,7 +1338,7 @@ _.extend(nukible.prototype, {
                     if (err) {
                       callback(err);
                     } else {
-                      self.rData = new Buffer(0);
+                      self.rData = Buffer.alloc(0);
                       // console.log("CL Authorization-ID confirmation sent");
                     }
                   });
