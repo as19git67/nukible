@@ -225,8 +225,7 @@ _.extend(nukible.prototype, {
 
             if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid === characteristic.uuid) {
               self.nukiServiceGeneralDataIOCharacteristic = characteristic;
-            }
-            else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid === characteristic.uuid) {
+            } else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid === characteristic.uuid) {
               self.nukiUSDIOCharacteristic = characteristic;
             }
           });
@@ -300,26 +299,26 @@ _.extend(nukible.prototype, {
             callback(err);
           } else {
             var data1 = Buffer.alloc(6);
-             switch (action) {
-              case 'lock':
-                data1.writeUInt8(2, 0); // 0x02 is lock
-                break;
-              case 'unlock':
-                data1.writeUInt8(1, 0); // 0x01 is unlock
-                break;
-              case 'unlatch':
-                data1.writeUInt8(3, 0); // 0x03 is unlatch
-                break;
-              case 'lock_n_go':
-                data1.writeUInt8(4, 0); // 0x04 is Lock'n' Go
-                break;
-              case 'lock_n_go_with_unlatch':
-                data1.writeUInt8(5, 0); // 0x05 is Lock'n' with unlatch
-                break;
-              default:
-                console.log("Command "+ action +" doesn't exist'");
-                break;
-             }
+            switch (action) {
+            case 'lock':
+              data1.writeUInt8(2, 0); // 0x02 is lock
+              break;
+            case 'unlock':
+              data1.writeUInt8(1, 0); // 0x01 is unlock
+              break;
+            case 'unlatch':
+              data1.writeUInt8(3, 0); // 0x03 is unlatch
+              break;
+            case 'lock_n_go':
+              data1.writeUInt8(4, 0); // 0x04 is Lock'n' Go
+              break;
+            case 'lock_n_go_with_unlatch':
+              data1.writeUInt8(5, 0); // 0x05 is Lock'n' with unlatch
+              break;
+            default:
+              console.log("Command " + action + " doesn't exist'");
+              break;
+            }
             data1.writeUInt32LE(self.options.appId, 1);
             data1.writeUInt8(0, 5); // no flags set
             var wData = Buffer.concat([data1, nonceK]);
@@ -836,7 +835,7 @@ _.extend(nukible.prototype, {
             } else {
 
               var t = setTimeout(function () {
-                console.log("Timeout. Aborting "+ command);
+                console.log("Timeout. Aborting " + command);
                 noble.removeAllListeners('discover');
                 self._commandInProgress = false;
                 if (_.isFunction(callback)) {
@@ -850,7 +849,7 @@ _.extend(nukible.prototype, {
                     var lockPeripheralId = self.options.peripheralId;
                     if (lockPeripheralId === peripheralId) {
                       noble.removeAllListeners('discover');
-                      console.log("Running command "+ command);
+                      console.log("Running command " + command);
                       self._onPeripheralDiscovered.call(self, command, peripheral, function (err, result) {
                         self._commandInProgress = false;
                         clearTimeout(t);
@@ -1071,11 +1070,9 @@ _.extend(nukible.prototype, {
 
                 if (nukible.prototype.nukiPairingGeneralDataIOCharacteristicUuid == characteristic.uuid) {
                   self.nukiPairingGeneralDataIOCharacteristic = characteristic;
-                }
-                else if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid == characteristic.uuid) {
+                } else if (nukible.prototype.nukiServiceGeneralDataIOCharacteristicUuid == characteristic.uuid) {
                   self.nukiServiceGeneralDataIOCharacteristic = characteristic;
-                }
-                else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid == characteristic.uuid) {
+                } else if (nukible.prototype.nukiUserSpecificDataInputOutputCharacteristicUuid == characteristic.uuid) {
                   self.nukiUSDIOCharacteristic = characteristic;
                 }
               });
